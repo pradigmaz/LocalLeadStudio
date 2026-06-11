@@ -22,56 +22,21 @@ sys.path.append(str(Path(__file__).parent.resolve()))
 from lead_studio.adapters.sqlite_repo import SQLiteRepo
 
 ROOT = Path(__file__).parent.resolve()
-DEFAULT_CHAINS = (
-    # Продукты / Супермаркеты
-    "пятёрочка, пятерочка, магнит, перекресток, перекрёсток, дикси, чижик, лента, ашан, верный, вкусвилл, "
-    "окей, о’кей, метро, metro, спар, spar, евроспар, eurospar, светофор, маяк, доброцен, монетка, "
-    # Алкоголь / Сигареты
-    "красное и белое, красное белое, кб, бристоль, ароматный мир, винлаб, "
-    # Барбершопы
-    "topgun, топган, oldboy, олдбой, borodach, бородач, супермен, бритва, britva, chop-chop, чоп-чоп, "
-    "франт, frant, big bro, биг бро, барбаросса, barbarossa, "
-    # Салоны красоты / Косметология / Лазер
-    "точка красоты, персона, лазер лав, laser love, 4hands, сахар и воск, sahar&vosk, babor, пальчики, "
-    "ма & ми, ma&mi, моне, mone, "
-    # Фитнес / Спорт
-    "world class, ворлд класс, x-fit, икс фит, alex fitness, ддх, ddx, spirit fitness, спирит, ссср фитнес, "
-    # Аптеки
-    "ригла, асна, 36.6, горздрав, столички, планета здоровья, вита, апрель, фармленд, неофарм, "
-    # Медицина
-    "медси, мать и дитя, инвитро, invitro, гемотест, gemotest, хеликс, helix, kdl, см-клиника, будь здоров, "
-    # Кафе / Фастфуд / Пекарни
-    "буханка, хлеб насущный, волконский, поль бейкери, шоколадница, кофе хауз, кофехауз, додо пицца, "
-    "dodo pizza, додопицца, ташир пицца, ростикс, rostics, вкусно и точка, вкусно — и точка, доминос, "
-    "domino's, cofix, one price coffee, даблби, doubleb, stars coffee, старбакс, starbucks, теремок, "
-    "крошка картошка, бургер кинг, burger king, макдоналдс, mcdonalds, "
-    # Ритейл / Техника
-    "спортмастер, глория джинс, детский мир, dns, днс, эльдорадо, мвидео, м.видео, ситилинк, леруа мерлен, "
-    "leroy merlin, лемана про, lemana pro, "
-    # Маркетплейсы и Доставка
-    "ozon, озон, wildberries, вайлдберриз, яндекс, сдэк, boxberry, avito, авито, dpd, "
-    # Прочее
-    "четыре лапы, бетховен, petshop, fit service, фит сервис, вилгуд, колесо.ру, vianor"
-)
+CONFIG_PATH = ROOT.parent / "config.json"
+try:
+    CONFIG = json.loads(CONFIG_PATH.read_text(encoding="utf-8"))
+except Exception:
+    CONFIG = {"search": {"regions": {}}, "parser": {"default_chains": [], "max_photos": 12, "street_indicators": [], "business_indicators": [], "country_indicators": []}}
 
+DEFAULT_CHAINS = tuple(CONFIG["parser"].get("default_chains", []))
+MAX_PHOTOS = CONFIG["parser"].get("max_photos", 12)
+STREET_INDICATORS = set(CONFIG["parser"].get("street_indicators", []))
+BUSINESS_INDICATORS = set(CONFIG["parser"].get("business_indicators", []))
+COUNTRY_INDICATORS = CONFIG["parser"].get("country_indicators", ["россия", "russia"])
 
-MAX_PHOTOS = 12
-
-STREET_INDICATORS = {
-    "улица", "ул", "проспект", "просп", "пр-кт", "пр", "переулок", "пер", "проезд", 
-    "шоссе", "бульвар", "тупик", "набережная", "площадь", "пл", "дом", "д", "корпус", 
-    "корп", "строение", "стр", "сооружение", "литера", "лит", "офис", "оф", "квартира", "кв", 
-    "комната", "комн", "квартал", "кв-л", "микрорайон", "мкр", "мкрн", "гск", "снт", "днт", 
-    "тракт", "аллея", "въезд", "спуск", "взвоз", "территория", "кордон", "массив", "жилой"
-}
-
-BUSINESS_INDICATORS = {
-    "салон", "бьюти", "центр", "студия", "барбершоп", "парикмахерская", "косметология", 
-    "отель", "магазин", "кафе", "ресторан", "фитнес", "клуб", "аптека", "клиника", "стоматология",
-    "школа", "детский", "бассейн", "баня", "сауна", "автосервис", "шиномонтаж", "автомойка"
-}
-
-COUNTRY_INDICATORS = ["россия", "russia"]
+KNOWN_CITIES = []
+for _cities in CONFIG["search"].get("regions", {}).values():
+    KNOWN_CITIES.extend(_cities)
 
 
 def get_db_repo() -> SQLiteRepo:
@@ -115,7 +80,7 @@ def extract_city_region(address: str, query: str = "") -> tuple[str, str]:
     city_candidates = []
     for part in parts:
         pl = part.lower()
-        if pl in country_indicators:
+        if pl in COUNTRY_INDICATORS:
             continue
         if region and part == region:
             continue
@@ -165,19 +130,14 @@ def extract_city_region(address: str, query: str = "") -> tuple[str, str]:
         
     # Fallback to search query and address for known cities
     if not city:
-        known_cities = [
-            "Воронеж", "Рамонь", "Новая Усмань", "Семилуки", "Бобров", "Лиски",
-            "Москва", "Химки", "Подольск", "Королев", "Мытищи", "Люберцы",
-            "Краснодар", "Сочи", "Новороссийск", "Анапа", "Геленджик"
-        ]
         combined = (query or "") + " " + (address or "")
-        for c in known_cities:
+        for c in KNOWN_CITIES:
             if re.search(r'\b' + re.escape(c) + r'\b', combined, re.IGNORECASE):
                 city = c
                 break
         if not city:
             combined_lower = combined.lower()
-            for c in known_cities:
+            for c in KNOWN_CITIES:
                 if c.lower() in combined_lower:
                     city = c
                     break

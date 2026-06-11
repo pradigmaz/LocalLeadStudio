@@ -8,21 +8,16 @@ from typing import Any
 from openpyxl import load_workbook
 
 
-HEADERS = {
-    "User-Agent": (
-        "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
-        "AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0 Safari/537.36"
-    ),
-    "Accept-Language": "ru-RU,ru;q=0.9,en;q=0.8",
-}
-IMAGE_SIZE = "L_height"
+ROOT = Path(__file__).parent.resolve()
+CONFIG_PATH = ROOT.parent / "config.json"
+try:
+    CONFIG = json.loads(CONFIG_PATH.read_text(encoding="utf-8"))
+except Exception:
+    CONFIG = {"parser": {"headers": {}, "social_domains": [], "max_photos": 12}}
 
-SOCIAL_DOMAINS = (
-    "yclients.com", "dikidi.net", "dikidi.ru", "prodoctorov.ru", "zoon.ru",
-    "vk.com", "t.me", "wa.me", "whatsapp.com", "instagram.com",
-    "facebook.com", "viber.com", "youtube.com", "ok.ru",
-    "taplink.cc", "aqulas.me", "nethouse.ru"
-)
+HEADERS = CONFIG["parser"].get("headers", {})
+SOCIAL_DOMAINS = tuple(CONFIG["parser"].get("social_domains", []))
+IMAGE_SIZE = "L_height"
 
 def text(value: Any) -> str:
     return "" if value is None else str(value).strip()
