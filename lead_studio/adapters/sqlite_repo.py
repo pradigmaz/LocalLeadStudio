@@ -1,6 +1,7 @@
 import sqlite3
 import json
 import logging
+import contextlib
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
 
@@ -119,11 +120,19 @@ class SQLiteRepo:
         self.db_path = Path(db_path)
         self._init_db()
 
-    def get_connection(self) -> sqlite3.Connection:
-        conn = sqlite3.connect(self.db_path)
+    @contextlib.contextmanager
+    def get_connection(self):
+        conn = sqlite3.connect(self.db_path, timeout=10.0)
         conn.row_factory = sqlite3.Row
         conn.execute("PRAGMA foreign_keys = ON")
-        return conn
+        try:
+            yield conn
+            conn.commit()
+        except Exception:
+            conn.rollback()
+            raise
+        finally:
+            conn.close()
 
     def _init_db(self):
         self.db_path.parent.mkdir(parents=True, exist_ok=True)
