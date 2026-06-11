@@ -19,6 +19,7 @@ import {
 } from "@/components/ui/alert-dialog";
 import { ChevronDown, Database, Settings, Trash2, Download, Upload } from 'lucide-react';
 import { motion } from 'framer-motion';
+import { toast } from 'sonner';
 
 interface Preset {
   id: string;
@@ -74,7 +75,7 @@ export function SettingsDialog() {
 
   const saveBlacklist = () => {
     localStorage.setItem('yamap_blacklist', blacklist);
-    alert('Чёрный список сохранён!');
+    toast.success('Чёрный список сохранён!');
     window.dispatchEvent(new Event('yamap_blacklist_updated'));
   };
 
@@ -93,9 +94,9 @@ export function SettingsDialog() {
       setPresets(parsed);
       localStorage.setItem('yamap_presets_json', JSON.stringify(parsed));
       window.dispatchEvent(new Event('yamap_presets_updated'));
-      alert("Пресеты успешно импортированы!");
+      toast.success("Пресеты успешно импортированы!");
     } catch (error: unknown) {
-      alert(`Ошибка разбора JSON: ${getErrorMessage(error)}`);
+      toast.error(`Ошибка разбора JSON: ${getErrorMessage(error)}`);
     }
   };
 
@@ -105,14 +106,14 @@ export function SettingsDialog() {
       const res = await fetch('/api/settings/clean_db', { method: 'POST' });
       const data: ApiError = await res.json().catch(() => ({}));
       if (res.ok) {
-        alert("База успешно очищена от мусора.");
+        toast.success("База успешно очищена от мусора.");
         window.location.reload();
       } else {
-        alert(`Ошибка при очистке БД: ${data.error || res.statusText || 'Неизвестная ошибка'}`);
+        toast.error(`Ошибка при очистке БД: ${data.error || res.statusText || 'Неизвестная ошибка'}`);
       }
     } catch (error: unknown) {
       console.error(error);
-      alert(`Ошибка при очистке БД: ${getErrorMessage(error)}`);
+      toast.error(`Ошибка при очистке БД: ${getErrorMessage(error)}`);
     } finally {
       setIsCleaning(false);
     }
@@ -124,14 +125,14 @@ export function SettingsDialog() {
       const res = await fetch('/api/settings/reset_db', { method: 'POST' });
       const data: ApiError = await res.json().catch(() => ({}));
       if (res.ok) {
-        alert("База данных полностью сброшена.");
+        toast.success("База данных полностью сброшена.");
         window.location.reload();
       } else {
-        alert(`Ошибка при сбросе БД: ${data.error || res.statusText || 'Неизвестная ошибка'}`);
+        toast.error(`Ошибка при сбросе БД: ${data.error || res.statusText || 'Неизвестная ошибка'}`);
       }
     } catch (error: unknown) {
       console.error(error);
-      alert(`Ошибка при сбросе БД: ${getErrorMessage(error)}`);
+      toast.error(`Ошибка при сбросе БД: ${getErrorMessage(error)}`);
     } finally {
       setIsCleaning(false);
     }
@@ -156,14 +157,14 @@ export function SettingsDialog() {
       });
       const data: ApiError = await res.json().catch(() => ({}));
       if (res.ok) {
-        alert("База данных успешно импортирована.");
+        toast.success("База данных успешно импортирована.");
         window.location.reload();
       } else {
-        alert(`Ошибка при импорте БД: ${data.error || res.statusText || 'Неизвестная ошибка'}`);
+        toast.error(`Ошибка при импорте БД: ${data.error || res.statusText || 'Неизвестная ошибка'}`);
       }
     } catch (error: unknown) {
       console.error(error);
-      alert(`Ошибка при импорте БД: ${getErrorMessage(error)}`);
+      toast.error(`Ошибка при импорте БД: ${getErrorMessage(error)}`);
     } finally {
       setIsCleaning(false);
       if (fileInputRef.current) fileInputRef.current.value = '';

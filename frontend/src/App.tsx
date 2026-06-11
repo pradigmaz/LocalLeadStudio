@@ -4,6 +4,7 @@ import { LeadsTable } from '@/components/leads/LeadsTable'
 import { LeadModal } from '@/components/leads/LeadModal'
 import { SettingsDialog } from '@/components/settings/SettingsDialog'
 import { Badge } from "@/components/ui/badge"
+import { Toaster } from "@/components/ui/sonner"
 import type { Lead, RunConfig, RunResult } from '@/types'
 
 interface LeadsResponse {
@@ -131,6 +132,7 @@ function App() {
 
   return (
     <div className="flex h-screen bg-slate-100 overflow-hidden text-slate-900 font-sans">
+      <Toaster position="top-right" richColors />
       {/* Sidebar */}
       <div className="w-80 shrink-0 border-r bg-white flex flex-col z-10 shadow-sm">
         <div className="h-14 flex items-center px-6 border-b shrink-0">

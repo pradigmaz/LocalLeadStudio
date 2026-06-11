@@ -5,7 +5,18 @@ import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group"
 import { ExternalLink, Globe, Link, Phone, Star, Clock, Send } from "lucide-react"
 import { motion } from "framer-motion"
 import { useState, useEffect } from "react"
+import { toast } from "sonner"
 import { LeadModalPhotos } from "./LeadModalPhotos"
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog"
 import type { Lead, LeadEvent } from "@/types"
 
 interface ApiError {
@@ -41,6 +52,8 @@ export function LeadModal({ lead, isOpen, onClose, onStatusChange, onPriorityCha
   const [events, setEvents] = useState<LeadEvent[]>([]);
   const [newComment, setNewComment] = useState("");
   const [isLoadingEvents, setIsLoadingEvents] = useState(false);
+  const [isDeleteDialogOpen, setIsDeleteDialogOpen] = useState(false);
+  const [isBlacklistDialogOpen, setIsBlacklistDialogOpen] = useState(false);
 
   useEffect(() => {
     if (lead?.id && isOpen) {
@@ -81,24 +94,24 @@ export function LeadModal({ lead, isOpen, onClose, onStatusChange, onPriorityCha
   if (!lead) return null;
 
   const handleDeleteLead = async () => {
-    if (!window.confirm(`Вы уверены, что хотите удалить лид "${lead.name}" и все его данные из базы?`)) return;
     try {
       const res = await fetch(`/api/leads/${lead.id}`, { method: 'DELETE' });
       if (res.ok) {
-        alert("Лид удален из базы.");
+        toast.success("Лид удален из базы.");
         onLeadDeleted(lead.id);
         onClose();
       } else {
         const data: ApiError = await res.json().catch(() => ({}));
-        alert(`Ошибка при удалении: ${data.error || 'Ошибка сервера'}`);
+        toast.error(`Ошибка при удалении: ${data.error || 'Ошибка сервера'}`);
       }
     } catch (error: unknown) {
-      alert(`Ошибка: ${getErrorMessage(error)}`);
+      toast.error(`Ошибка: ${getErrorMessage(error)}`);
+    } finally {
+      setIsDeleteDialogOpen(false);
     }
   };
 
   const handleBlacklistBrand = async () => {
-    if (!window.confirm(`Добавить "${lead.name}" в чёрный список сетевиков? Он получит статус "Сетевик" и скроется.`)) return;
     const stored = localStorage.getItem('yamap_blacklist') || "";
     const words = stored.split(',').map(w => w.trim()).filter(Boolean);
     if (!words.includes(lead.name)) {
@@ -107,7 +120,8 @@ export function LeadModal({ lead, isOpen, onClose, onStatusChange, onPriorityCha
     }
     
     onStatusChange(lead.id, 'CHAIN');
-    alert(`"${lead.name}" добавлен в чёрный список.`);
+    toast.success(`"${lead.name}" добавлен в чёрный список.`);
+    setIsBlacklistDialogOpen(false);
     onClose();
   };
 
@@ -437,14 +451,48 @@ export function LeadModal({ lead, isOpen, onClose, onStatusChange, onPriorityCha
         </div>
 
         <div className="p-6 border-t bg-slate-50 flex gap-3 shrink-0">
-          <Button variant="destructive" className="flex-1 font-medium transition-all" onClick={handleDeleteLead}>
+          <Button variant="destructive" className="flex-1 font-medium transition-all" onClick={() => setIsDeleteDialogOpen(true)}>
             Снести лид из базы
           </Button>
-          <Button variant="outline" className="flex-1 font-medium border-red-200 text-red-700 hover:bg-red-50 hover:text-red-800 transition-all" onClick={handleBlacklistBrand}>
+          <Button variant="outline" className="flex-1 font-medium border-red-200 text-red-700 hover:bg-red-50 hover:text-red-800 transition-all" onClick={() => setIsBlacklistDialogOpen(true)}>
             В чёрный список
           </Button>
         </div>
       </SheetContent>
+
+      {/* Delete Confirmation Dialog */}
+      <AlertDialog open={isDeleteDialogOpen} onOpenChange={setIsDeleteDialogOpen}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Удаление лида</AlertDialogTitle>
+            <AlertDialogDescription>
+              Вы уверены, что хотите удалить лид "{lead.name}" и все его данные из базы?
+              Это действие необратимо.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Отмена</AlertDialogCancel>
+            <AlertDialogAction onClick={handleDeleteLead} className="bg-red-600 hover:bg-red-700 text-white">Удалить</AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      {/* Blacklist Confirmation Dialog */}
+      <AlertDialog open={isBlacklistDialogOpen} onOpenChange={setIsBlacklistDialogOpen}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>В чёрный список</AlertDialogTitle>
+            <AlertDialogDescription>
+              Добавить "{lead.name}" в чёрный список сетевиков?
+              Лид получит статус "Сетевик" и больше не будет показываться.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Отмена</AlertDialogCancel>
+            <AlertDialogAction onClick={handleBlacklistBrand}>Добавить</AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </Sheet>
   )
 }

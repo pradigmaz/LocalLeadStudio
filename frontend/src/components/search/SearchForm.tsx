@@ -6,6 +6,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Badge } from "@/components/ui/badge"
 import { Toggle } from "@/components/ui/toggle"
+import { toast } from "sonner"
 import type { RunConfig } from "@/types"
 import { REGIONS, NICHES } from "./data"
 import { SearchPresetBar, type Preset } from "./SearchPresetBar"
@@ -120,7 +121,7 @@ export function SearchForm({ onRun, isLoading }: SearchFormProps) {
 
   const handleSavePreset = () => {
     if (!newPresetName.trim()) {
-      alert("Укажите имя пресета!");
+      toast.error("Укажите имя пресета!");
       return;
     }
 
@@ -145,7 +146,7 @@ export function SearchForm({ onRun, isLoading }: SearchFormProps) {
     
     setNewPresetName("");
     setActivePresetId(newPreset.id);
-    alert(`Пресет "${newPreset.name}" сохранён!`);
+    toast.success(`Пресет "${newPreset.name}" сохранён!`);
   };
 
   return (
