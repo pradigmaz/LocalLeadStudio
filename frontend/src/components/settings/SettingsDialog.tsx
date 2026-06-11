@@ -265,15 +265,44 @@ export function SettingsDialog() {
             </motion.div>
           </TabsContent>
  
-          <TabsContent value="db" className="pt-4 flex-1 overflow-y-auto">
+          <TabsContent value="db" className="pt-4 flex-1 overflow-y-auto space-y-4">
             <motion.div
               initial={{ opacity: 0, y: 8 }}
               animate={{ opacity: 1, y: 0 }}
+              className="flex flex-col gap-4 rounded-xl border border-slate-200 bg-slate-50/50 p-4"
+            >
+              <h4 className="flex items-center gap-2 text-sm font-semibold text-slate-900">
+                <Database className="size-4 text-slate-500" />
+                Резервное копирование
+              </h4>
+              <div className="flex flex-col gap-3">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <h5 className="font-medium text-sm text-slate-900">Экспорт / Импорт БД</h5>
+                    <p className="text-xs text-muted-foreground">Скачайте текущую БД или загрузите из файла `.db`.</p>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <Button variant="outline" size="sm" onClick={handleExportDB} disabled={isCleaning} className="bg-white">
+                      <Download className="size-4 mr-1" /> Экспорт
+                    </Button>
+                    <Button variant="outline" size="sm" onClick={() => fileInputRef.current?.click()} disabled={isCleaning} className="bg-white">
+                      <Upload className="size-4 mr-1" /> Импорт
+                    </Button>
+                    <input type="file" ref={fileInputRef} onChange={handleImportDB} accept=".db" className="hidden" />
+                  </div>
+                </div>
+              </div>
+            </motion.div>
+
+            <motion.div
+              initial={{ opacity: 0, y: 8 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ delay: 0.1 }}
               className="flex flex-col gap-4 rounded-xl border border-red-100 bg-red-50/50 p-4"
             >
               <h4 className="flex items-center gap-2 text-sm font-semibold text-red-900">
-                <Database className="size-4" />
-                Управление базой
+                <Trash2 className="size-4" />
+                Опасная зона
               </h4>
 
               <div className="flex flex-col gap-3">
@@ -282,27 +311,11 @@ export function SettingsDialog() {
                     <h5 className="font-medium text-sm text-slate-900">Очистка мусора</h5>
                     <p className="text-xs text-muted-foreground">Удаляет лиды со статусами Неликвид, Сетевик, Мусор.</p>
                   </div>
-                  <Button variant="outline" size="sm" onClick={handleCleanDB} disabled={isCleaning}>
+                  <Button variant="outline" size="sm" onClick={handleCleanDB} disabled={isCleaning} className="bg-white border-red-200 hover:bg-red-100 text-red-700 hover:text-red-800">
                     Очистить
                   </Button>
                 </div>
  
-                <div className="flex items-center justify-between border-t border-red-100 pt-3">
-                  <div>
-                    <h5 className="font-medium text-sm text-slate-900">Резервное копирование</h5>
-                    <p className="text-xs text-muted-foreground">Скачать текущую БД или загрузить из файла.</p>
-                  </div>
-                  <div className="flex items-center gap-2">
-                    <Button variant="outline" size="sm" onClick={handleExportDB} disabled={isCleaning}>
-                      <Download className="size-4 mr-1" /> Экспорт
-                    </Button>
-                    <Button variant="outline" size="sm" onClick={() => fileInputRef.current?.click()} disabled={isCleaning}>
-                      <Upload className="size-4 mr-1" /> Импорт
-                    </Button>
-                    <input type="file" ref={fileInputRef} onChange={handleImportDB} accept=".db" className="hidden" />
-                  </div>
-                </div>
-
                 <div className="flex items-center justify-between border-t border-red-100 pt-3">
                   <div>
                     <h5 className="font-medium text-sm text-red-700">Полный сброс базы</h5>
