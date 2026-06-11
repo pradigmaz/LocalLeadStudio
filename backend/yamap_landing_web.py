@@ -5,11 +5,13 @@ import sqlite3
 import uuid
 from pathlib import Path
 from concurrent.futures import ThreadPoolExecutor
+from functools import lru_cache
 from urllib.parse import quote
 from urllib.request import Request, urlopen
 
-from fastapi import FastAPI, HTTPException, Request as FastAPIRequest
+from fastapi import FastAPI, HTTPException, Query, Request as FastAPIRequest
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.middleware.gzip import GZipMiddleware
 from fastapi.responses import FileResponse
 from pydantic import BaseModel
 from typing import Optional
@@ -29,7 +31,26 @@ sys.path.append(str(Path(__file__).parent.resolve()))
 from lead_studio.adapters.sqlite_repo import SQLiteRepo
 
 ROOT = Path(__file__).parent.resolve()
-CONFIG_PATH = ROOT.parent / "config.json"
+PROJECT_ROOT = ROOT.parent
+DATA_DIR = PROJECT_ROOT / "lead_studio_data"
+LEGACY_DATA_DIR = ROOT / "lead_studio_data"
+CONFIG_PATH = PROJECT_ROOT / "config.json"
+LOCAL_CLIENT_HOSTS = {"127.0.0.1", "::1", "localhost"}
+LOCAL_CORS_ORIGINS = ["http://127.0.0.1:5173", "http://localhost:5173"]
+CONFIRM_HEADER = "X-LocalLead-Confirm"
+REQUIRED_DB_TABLES = {"organizations", "leads", "runs", "run_results", "files", "lead_events"}
+LOW_VALUE_LOCALITY_RE = re.compile(
+    r"\b(село|деревня|пос[её]лок|хутор|аул|кишлак|улус|кордон|починок|разъезд|станция)\b",
+    re.IGNORECASE,
+)
+URBAN_TYPE_LOCALITY_RE = re.compile(
+    r"\b(пгт|пос[её]лок городского типа|рабочий пос[её]лок)\b",
+    re.IGNORECASE,
+)
+LOCALITY_QUALIFIER_RE = re.compile(
+    r"\([^)]*(район|область|край|республика|округ|муницип|поселение)[^)]*\)",
+    re.IGNORECASE,
+)
 try:
     CONFIG = json.loads(CONFIG_PATH.read_text(encoding="utf-8"))
 except Exception:
@@ -47,7 +68,158 @@ for _cities in CONFIG["search"].get("regions", {}).values():
 
 
 def get_db_repo() -> SQLiteRepo:
-    return SQLiteRepo(ROOT / "lead_studio_data" / "app.db")
+    return SQLiteRepo(DATA_DIR / "app.db")
+
+
+def data_file(name: str) -> Path:
+    path = DATA_DIR / name
+    return path if path.exists() else LEGACY_DATA_DIR / name
+
+
+@lru_cache(maxsize=16)
+def read_json_file(path: str, mtime_ns: int) -> object:
+    del mtime_ns
+    return json.loads(Path(path).read_text(encoding="utf-8"))
+
+
+def load_json_data(path: Path, fallback: object) -> object:
+    if not path.exists():
+        return fallback
+    try:
+        return read_json_file(str(path), path.stat().st_mtime_ns)
+    except Exception:
+        return fallback
+
+
+def load_cities_data() -> dict:
+    data = load_json_data(data_file("cities.json"), {"areas": []})
+    return data if isinstance(data, dict) else {"areas": []}
+
+
+def city_region_summary(region: dict) -> dict:
+    cities = region.get("areas") if isinstance(region.get("areas"), list) else []
+    return {
+        "id": region.get("id", ""),
+        "name": region.get("name", ""),
+        "city_count": len(cities),
+    }
+
+
+def find_city_region(region_id: str) -> Optional[dict]:
+    for region in load_cities_data().get("areas", []):
+        if str(region.get("id", "")) == region_id:
+            return region
+    return None
+
+
+def normalize_search_text(value: object) -> str:
+    return re.sub(r"\s+", " ", str(value).lower().replace("ё", "е")).strip()
+
+
+def strip_name_qualifier(value: object) -> str:
+    return re.sub(r"\s*\([^)]*\)", "", str(value)).strip()
+
+
+def is_low_value_locality(city: dict) -> bool:
+    name = str(city.get("name", ""))
+    if URBAN_TYPE_LOCALITY_RE.search(name):
+        return False
+    return bool(LOW_VALUE_LOCALITY_RE.search(name) or LOCALITY_QUALIFIER_RE.search(name))
+
+
+def visible_city_rows(cities: list, include_small: bool) -> list:
+    if include_small:
+        return cities
+    return [city for city in cities if not is_low_value_locality(city)]
+
+
+def search_match_score(value: object, needle: str, *, ignore_qualifier: bool = False) -> Optional[tuple[int, int]]:
+    searchable = strip_name_qualifier(value) if ignore_qualifier else value
+    text = normalize_search_text(searchable)
+    if not text or not needle:
+        return None
+    if text == needle:
+        return (0, 0)
+    if text.startswith(needle):
+        return (10, len(text) - len(needle))
+
+    for index, token in enumerate(re.split(r"[\s,().-]+", text)):
+        if token.startswith(needle):
+            return (20 + index, len(token) - len(needle))
+
+    position = text.find(needle)
+    if position >= 0:
+        return (50 + position, len(text) - len(needle))
+    return None
+
+
+def search_city_regions(query: str, limit_regions: int, limit_cities: int, include_small: bool) -> dict:
+    needle = normalize_search_text(query)
+    if not needle:
+        return {"areas": []}
+
+    region_hits = []
+    for region_index, region in enumerate(load_cities_data().get("areas", [])):
+        region_name = str(region.get("name", ""))
+        all_cities = region.get("areas") if isinstance(region.get("areas"), list) else []
+        cities = visible_city_rows(all_cities, include_small)
+
+        region_score = search_match_score(region_name, needle)
+        matched_cities = []
+        for city_index, city in enumerate(cities):
+            city_score = search_match_score(city.get("name", ""), needle, ignore_qualifier=True)
+            if not city_score:
+                continue
+            matched_cities.append((city_score, city_index, city))
+
+        if not region_score and not matched_cities:
+            continue
+
+        matched_cities.sort(key=lambda item: (item[0][0], item[0][1], item[1]))
+        rank_candidates = []
+        if region_score:
+            rank_candidates.append((region_score[0], 0, region_score[1], region_index))
+        if matched_cities:
+            best_city_score = matched_cities[0][0]
+            rank_candidates.append((best_city_score[0], 1 if not region_score else 0, best_city_score[1], region_index))
+
+        if matched_cities:
+            result_cities = [city for _score, _index, city in matched_cities[:limit_cities]]
+        elif cities:
+            result_cities = cities[:limit_cities]
+        else:
+            result_cities = [{
+                "id": region.get("id", ""),
+                "name": region.get("name", ""),
+                "parent_id": region.get("parent_id"),
+            }]
+
+        region_hits.append((min(rank_candidates), {
+            "id": region.get("id", ""),
+            "name": region.get("name", ""),
+            "city_count": len(cities),
+            "total_city_count": len(all_cities),
+            "areas": result_cities,
+        }))
+
+    return {"areas": [region for _rank, region in sorted(region_hits)[:limit_regions]]}
+
+
+def require_local_request(request: FastAPIRequest, require_confirm: bool = False) -> None:
+    host = request.client.host if request.client else ""
+    if host not in LOCAL_CLIENT_HOSTS:
+        raise HTTPException(status_code=403, detail="Local requests only")
+    if require_confirm and request.headers.get(CONFIRM_HEADER) != "1":
+        raise HTTPException(status_code=400, detail="Missing local confirmation header")
+
+
+def validate_sqlite_database(db_path: Path) -> None:
+    with sqlite3.connect(db_path) as conn:
+        rows = conn.execute("SELECT name FROM sqlite_master WHERE type = 'table'").fetchall()
+    tables = {row[0] for row in rows}
+    missing = sorted(REQUIRED_DB_TABLES - tables)
+    if missing:
+        raise HTTPException(status_code=400, detail=f"Invalid Local Lead Studio DB, missing tables: {', '.join(missing)}")
 
 
 def search_items(query: str, limit: int) -> list[dict]:
@@ -243,6 +415,21 @@ def keep_lead(lead: dict, config: dict, chain_words: list[str]) -> tuple[bool, s
     return True, ""
 
 
+def apply_fields_to_parse(lead: dict, fields_to_parse: list[str] | None) -> None:
+    if not fields_to_parse:
+        return
+    fields = set(fields_to_parse)
+    if "sites" not in fields:
+        lead["websites"] = []
+        lead["has_site"] = False
+    if "socials" not in fields:
+        lead["socials"] = []
+    if "phones" not in fields:
+        lead["phones"] = []
+    if "photos" not in fields:
+        lead["photos"] = []
+
+
 def download_photos(lead: dict, folder: Path) -> int:
     photo_dir = folder / "photos"
     photo_dir.mkdir(exist_ok=True)
@@ -277,10 +464,14 @@ def save_lead(lead: dict, output_root: Path, download: bool) -> dict:
 def run_job(config: dict) -> dict:
     queries = [line.strip() for line in (config.get("queries") or "").splitlines() if line.strip()]
     run_name = slug(config.get("runName") or "yamap_run")
-    output_root = ROOT / (config.get("outputDir") or "lead_studio_data") / "runs" / run_name
+    output_dir = Path(config.get("outputDir") or DATA_DIR)
+    if not output_dir.is_absolute():
+        output_dir = PROJECT_ROOT / output_dir
+    output_root = output_dir / "runs" / run_name
     output_root.mkdir(parents=True, exist_ok=True)
     chain_words = [part.strip().lower() for part in (config.get("excludeChains") or "").split(",")]
     max_per_query = int(config.get("maxPerQuery") or 10)
+    fields_to_parse = config.get("fields_to_parse")
     
     # Initialize DB Repo
     repo = get_db_repo()
@@ -301,6 +492,7 @@ def run_job(config: dict) -> dict:
         for item in search_items(query, max_per_query):
             try:
                 lead = lead_from_item(item, query)
+                apply_fields_to_parse(lead, fields_to_parse)
                 
                 # Save to DB
                 org_data = {
@@ -378,6 +570,8 @@ class RunJobRequest(BaseModel):
     keepSitesForRedesign: Optional[bool] = True
     minReviews: Optional[int] = 0
     requirePhotos: Optional[bool] = True
+    # New fields for toggling parsed data
+    fields_to_parse: Optional[list[str]] = None
 
 class LeadEventCommentRequest(BaseModel):
     comment: str
@@ -392,11 +586,12 @@ app = FastAPI(title="Local Lead Studio API")
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
-    allow_credentials=True,
+    allow_origins=LOCAL_CORS_ORIGINS,
+    allow_credentials=False,
     allow_methods=["*"],
     allow_headers=["*"],
 )
+app.add_middleware(GZipMiddleware, minimum_size=1024)
 
 @app.get("/api/leads")
 def get_leads():
@@ -417,7 +612,8 @@ def get_lead_events(lead_id: str):
     return {"events": events}
 
 @app.get("/api/settings/export")
-def export_db():
+def export_db(request: FastAPIRequest):
+    require_local_request(request)
     repo = get_db_repo()
     db_path = repo.db_path
     if not db_path.exists():
@@ -428,12 +624,50 @@ def export_db():
         media_type="application/octet-stream"
     )
 
+@app.get("/api/settings/cities")
+def get_cities(
+    summary: bool = False,
+    region_id: Optional[str] = None,
+    q: Optional[str] = None,
+    include_small: bool = False,
+    limit_regions: int = Query(default=80, ge=1, le=200),
+    limit_cities: int = Query(default=200, ge=1, le=500),
+):
+    if q:
+        return search_city_regions(q, limit_regions, limit_cities, include_small)
+
+    if region_id:
+        region = find_city_region(region_id)
+        if not region:
+            raise HTTPException(status_code=404, detail="Region not found")
+        cities = region.get("areas") if isinstance(region.get("areas"), list) else []
+        return {"areas": [{**region, "areas": visible_city_rows(cities, include_small)}]}
+
+    if summary:
+        return {
+            "areas": [
+                city_region_summary({**region, "areas": visible_city_rows(
+                    region.get("areas") if isinstance(region.get("areas"), list) else [],
+                    include_small,
+                )})
+                for region in load_cities_data().get("areas", [])
+            ]
+        }
+
+    return load_cities_data()
+
+@app.get("/api/settings/categories")
+def get_categories():
+    return load_json_data(data_file("categories.json"), [])
+
 @app.post("/api/run")
-def run_job_api(config: RunJobRequest):
+def run_job_api(config: RunJobRequest, request: FastAPIRequest):
+    require_local_request(request)
     return run_job(config.model_dump())
 
 @app.post("/api/leads/{lead_id}/events")
-def add_lead_comment(lead_id: str, request: LeadEventCommentRequest):
+def add_lead_comment(lead_id: str, request: LeadEventCommentRequest, http_request: FastAPIRequest):
+    require_local_request(http_request)
     comment = request.comment.strip()
     if comment:
         repo = get_db_repo()
@@ -445,7 +679,8 @@ def add_lead_comment(lead_id: str, request: LeadEventCommentRequest):
     return {"success": True}
 
 @app.post("/api/leads/{lead_id}")
-def update_lead(lead_id: str, request: LeadUpdateRequest):
+def update_lead(lead_id: str, request: LeadUpdateRequest, http_request: FastAPIRequest):
+    require_local_request(http_request)
     repo = get_db_repo()
     with repo.get_connection() as conn:
         update_fields = []
@@ -479,7 +714,8 @@ def update_lead(lead_id: str, request: LeadUpdateRequest):
     return {"success": True}
 
 @app.post("/api/settings/clean_db")
-def clean_db():
+def clean_db(request: FastAPIRequest):
+    require_local_request(request, require_confirm=True)
     repo = get_db_repo()
     with repo.get_connection() as conn:
         conn.execute("PRAGMA foreign_keys = ON")
@@ -488,7 +724,8 @@ def clean_db():
     return {"success": True}
 
 @app.post("/api/settings/reset_db")
-def reset_db():
+def reset_db(request: FastAPIRequest):
+    require_local_request(request, require_confirm=True)
     repo = get_db_repo()
     with repo.get_connection() as conn:
         conn.execute("PRAGMA foreign_keys = ON")
@@ -503,16 +740,35 @@ def reset_db():
 
 @app.post("/api/settings/import")
 async def import_db(request: FastAPIRequest):
+    require_local_request(request, require_confirm=True)
     data = await request.body()
     if not data:
         raise HTTPException(status_code=400, detail="Missing file data")
-    repo = get_db_repo()
-    repo.db_path.parent.mkdir(parents=True, exist_ok=True)
-    repo.db_path.write_bytes(data)
+
+    if len(data) < 16 or data[:16] != b"SQLite format 3\x00":
+        raise HTTPException(status_code=400, detail="Invalid file format (Not a SQLite database)")
+
+    try:
+        db_path = DATA_DIR / "app.db"
+        db_path.parent.mkdir(parents=True, exist_ok=True)
+        temp_path = db_path.with_name(f".{db_path.name}.{uuid.uuid4().hex}.tmp")
+        try:
+            temp_path.write_bytes(data)
+            validate_sqlite_database(temp_path)
+            temp_path.replace(db_path)
+        finally:
+            if temp_path.exists():
+                temp_path.unlink()
+    except PermissionError:
+        raise HTTPException(status_code=500, detail="Файл базы данных заблокирован. Закройте другие программы (например, DBeaver), использующие БД.")
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=str(exc))
+
     return {"success": True}
 
 @app.delete("/api/leads/{lead_id}")
-def delete_lead(lead_id: str):
+def delete_lead(lead_id: str, request: FastAPIRequest):
+    require_local_request(request, require_confirm=True)
     repo = get_db_repo()
     with repo.get_connection() as conn:
         org_row = conn.execute("SELECT organization_id FROM leads WHERE id = ?", (lead_id,)).fetchone()
