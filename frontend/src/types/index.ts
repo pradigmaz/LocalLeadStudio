@@ -49,6 +49,7 @@ export interface RunConfig {
   keepSitesForRedesign: boolean;
   requirePhotos: boolean;
   downloadPhotos: boolean;
+  fields_to_parse?: string[];
 }
 
 export interface RunResult {

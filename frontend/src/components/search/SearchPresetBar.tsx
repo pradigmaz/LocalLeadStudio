@@ -14,6 +14,11 @@ export interface Preset {
   cities?: string[]
   niches?: string[]
   queries?: string
+  minReviews?: number
+  maxPerQuery?: number
+  downloadPhotos?: boolean
+  requirePhotos?: boolean
+  fields_to_parse?: string[]
 }
 
 interface SearchPresetBarProps {

@@ -7,6 +7,7 @@ import { motion } from "framer-motion"
 import { useState, useEffect } from "react"
 import { toast } from "sonner"
 import { LeadModalPhotos } from "./LeadModalPhotos"
+import { getApiErrorMessage, getErrorMessage } from "@/lib/api"
 import {
   AlertDialog,
   AlertDialogAction,
@@ -21,10 +22,8 @@ import type { Lead, LeadEvent } from "@/types"
 
 interface ApiError {
   error?: string;
+  detail?: unknown;
 }
-
-const getErrorMessage = (error: unknown) =>
-  error instanceof Error ? error.message : 'Ошибка подключения';
 
 interface LeadModalProps {
   lead: Lead | null;
@@ -56,16 +55,30 @@ export function LeadModal({ lead, isOpen, onClose, onStatusChange, onPriorityCha
   const [isBlacklistDialogOpen, setIsBlacklistDialogOpen] = useState(false);
 
   useEffect(() => {
+    let isCancelled = false;
     if (lead?.id && isOpen) {
-      setIsLoadingEvents(true);
-      fetch(`/api/leads/${lead.id}/events`)
-        .then(res => res.json())
-        .then(data => setEvents(data.events || []))
-        .finally(() => setIsLoadingEvents(false));
+      void Promise.resolve().then(() => {
+        if (isCancelled) return;
+        setIsLoadingEvents(true);
+        fetch(`/api/leads/${lead.id}/events`)
+          .then(res => res.json())
+          .then(data => {
+            if (!isCancelled) setEvents(data.events || []);
+          })
+          .finally(() => {
+            if (!isCancelled) setIsLoadingEvents(false);
+          });
+      });
     } else {
-      setEvents([]);
-      setNewComment("");
+      void Promise.resolve().then(() => {
+        if (isCancelled) return;
+        setEvents([]);
+        setNewComment("");
+      });
     }
+    return () => {
+      isCancelled = true;
+    };
   }, [lead?.id, isOpen]);
 
   const handleAddComment = async () => {
@@ -95,14 +108,17 @@ export function LeadModal({ lead, isOpen, onClose, onStatusChange, onPriorityCha
 
   const handleDeleteLead = async () => {
     try {
-      const res = await fetch(`/api/leads/${lead.id}`, { method: 'DELETE' });
+      const res = await fetch(`/api/leads/${lead.id}`, {
+        method: 'DELETE',
+        headers: { 'X-LocalLead-Confirm': '1' }
+      });
       if (res.ok) {
         toast.success("Лид удален из базы.");
         onLeadDeleted(lead.id);
         onClose();
       } else {
         const data: ApiError = await res.json().catch(() => ({}));
-        toast.error(`Ошибка при удалении: ${data.error || 'Ошибка сервера'}`);
+        toast.error(`Ошибка при удалении: ${getApiErrorMessage(data, 'Ошибка сервера')}`);
       }
     } catch (error: unknown) {
       toast.error(`Ошибка: ${getErrorMessage(error)}`);

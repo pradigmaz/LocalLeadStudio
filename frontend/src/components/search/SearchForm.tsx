@@ -23,12 +23,13 @@ const defaultConfig = (): RunConfig => ({
   runName: "ramon_test",
   maxPerQuery: 10,
   minReviews: 1,
-  outputDir: "D:\\всё по техничке\\lead_studio_data",
+  outputDir: "lead_studio_data",
   excludeChains: localStorage.getItem('yamap_blacklist') || "Пятерочка, Магнит, Перекресток, Сбербанк, ВТБ",
   skipWithSite: false,
   keepSitesForRedesign: true,
   requirePhotos: true,
-  downloadPhotos: false
+  downloadPhotos: false,
+  fields_to_parse: ["sites", "socials", "phones", "photos"]
 });
 
 export function SearchForm({ onRun, isLoading }: SearchFormProps) {
@@ -112,6 +113,14 @@ export function SearchForm({ onRun, isLoading }: SearchFormProps) {
       setSelectedRegion(preset.region || 'Воронежская область');
       setSelectedCities(preset.cities || []);
       setSelectedNicheItems(preset.niches || []);
+      setConfig(prev => ({
+        ...prev,
+        minReviews: preset.minReviews ?? prev.minReviews,
+        maxPerQuery: preset.maxPerQuery ?? prev.maxPerQuery,
+        downloadPhotos: preset.downloadPhotos ?? prev.downloadPhotos,
+        requirePhotos: preset.requirePhotos ?? prev.requirePhotos,
+        fields_to_parse: preset.fields_to_parse ?? prev.fields_to_parse,
+      }));
       setActiveTab('builder');
     } else if (preset.type === 'manual') {
       handleChange('queries', preset.queries || '');
@@ -135,6 +144,11 @@ export function SearchForm({ onRun, isLoading }: SearchFormProps) {
       newPreset.region = selectedRegion;
       newPreset.cities = selectedCities;
       newPreset.niches = selectedNicheItems;
+      newPreset.minReviews = config.minReviews;
+      newPreset.maxPerQuery = config.maxPerQuery;
+      newPreset.downloadPhotos = config.downloadPhotos;
+      newPreset.requirePhotos = config.requirePhotos;
+      newPreset.fields_to_parse = config.fields_to_parse;
     } else {
       newPreset.queries = config.queries;
     }

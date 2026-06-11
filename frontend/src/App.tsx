@@ -6,23 +6,13 @@ import { SettingsDialog } from '@/components/settings/SettingsDialog'
 import { Badge } from "@/components/ui/badge"
 import { Toaster } from "@/components/ui/sonner"
 import type { Lead, RunConfig, RunResult } from '@/types'
+import { NumberTicker } from "@/components/ui/number-ticker"
+import { getErrorMessage, readJson } from "@/lib/api"
 
 interface LeadsResponse {
   leads?: Lead[];
   error?: string;
 }
-
-const getErrorMessage = (error: unknown) =>
-  error instanceof Error ? error.message : 'Ошибка сети/подключения';
-
-const readJson = async <T,>(response: Response): Promise<T> => {
-  const text = await response.text();
-  const data = text ? JSON.parse(text) : {};
-  if (!response.ok) {
-    throw new Error((data as LeadsResponse | RunResult).error || `HTTP ${response.status}`);
-  }
-  return data as T;
-};
 
 function App() {
   const [viewState, setViewState] = useState<'IDLE' | 'LOADING' | 'RESULTS'>('IDLE');
@@ -82,21 +72,17 @@ function App() {
     }
 
     try {
-      const response = await fetch(`/api/leads/${leadId}/status`, {
+      const response = await fetch(`/api/leads/${leadId}`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ status: newStatus })
       });
       
-      if (!response.ok) {
-        setLeads(previousLeads);
-        setSelectedLead(previousSelectedLead);
-        console.error("Failed to update status on server");
-      }
+      await readJson<{ success: boolean }>(response);
     } catch (err) {
       setLeads(previousLeads);
       setSelectedLead(previousSelectedLead);
-      console.error("Error updating status:", err);
+      setError(getErrorMessage(err));
     }
   };
 
@@ -110,19 +96,17 @@ function App() {
     }
 
     try {
-      const response = await fetch(`/api/leads/${leadId}/status`, {
+      const response = await fetch(`/api/leads/${leadId}`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ priority })
       });
       
-      if (!response.ok) {
-        setLeads(previousLeads);
-        setSelectedLead(previousSelectedLead);
-      }
-    } catch (err) {
+      await readJson<{ success: boolean }>(response);
+    } catch (err: unknown) {
       setLeads(previousLeads);
       setSelectedLead(previousSelectedLead);
+      setError(getErrorMessage(err));
     }
   };
 
@@ -132,7 +116,7 @@ function App() {
 
   return (
     <div className="flex h-screen bg-slate-100 overflow-hidden text-slate-900 font-sans">
-      <Toaster position="top-right" richColors />
+      <Toaster position="bottom-right" richColors />
       {/* Sidebar */}
       <div className="w-80 shrink-0 border-r bg-white flex flex-col z-10 shadow-sm">
         <div className="h-14 flex items-center px-6 border-b shrink-0">
@@ -155,7 +139,9 @@ function App() {
           <h1 className="font-semibold text-lg flex items-center gap-3">
             Единая база
             {leads.length > 0 && (
-              <Badge variant="secondary" className="font-mono text-xs">{leads.length}</Badge>
+              <Badge variant="secondary" className="font-mono text-xs font-semibold">
+                <NumberTicker value={leads.length} />
+              </Badge>
             )}
           </h1>
           <div className="flex items-center gap-4 text-sm text-muted-foreground">
