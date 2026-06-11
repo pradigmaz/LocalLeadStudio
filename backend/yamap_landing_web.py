@@ -2,11 +2,18 @@ from __future__ import annotations
 import json
 import re
 import sqlite3
-from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+import uuid
 from pathlib import Path
 from concurrent.futures import ThreadPoolExecutor
 from urllib.parse import quote
 from urllib.request import Request, urlopen
+
+from fastapi import FastAPI, HTTPException, Request as FastAPIRequest
+from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import FileResponse
+from pydantic import BaseModel
+from typing import Optional
+import uvicorn
 
 from yamap_landing_parser import (
     HEADERS,
@@ -360,236 +367,171 @@ def run_job(config: dict) -> dict:
     return {"output": str(output_root), "saved": saved, "skipped": skipped, "run_id": run_id}
 
 
-class Handler(BaseHTTPRequestHandler):
-    def end_headers(self) -> None:
-        self.send_header("Access-Control-Allow-Origin", "*")
-        self.send_header("Access-Control-Allow-Methods", "GET, POST, DELETE, OPTIONS")
-        self.send_header("Access-Control-Allow-Headers", "Content-Type")
-        super().end_headers()
+class RunJobRequest(BaseModel):
+    queries: Optional[str] = None
+    runName: Optional[str] = None
+    outputDir: Optional[str] = None
+    excludeChains: Optional[str] = None
+    maxPerQuery: Optional[int] = 10
+    downloadPhotos: Optional[bool] = False
+    skipWithSite: Optional[bool] = True
+    keepSitesForRedesign: Optional[bool] = True
+    minReviews: Optional[int] = 0
+    requirePhotos: Optional[bool] = True
 
-    def do_OPTIONS(self) -> None:
-        self.send_response(200)
-        self.end_headers()
+class LeadEventCommentRequest(BaseModel):
+    comment: str
 
-    def send_json(self, payload: dict, status: int = 200) -> None:
-        data = json.dumps(payload, ensure_ascii=False).encode("utf-8")
-        self.send_response(status)
-        self.send_header("Content-Type", "application/json; charset=utf-8")
-        self.send_header("Content-Length", str(len(data)))
-        self.end_headers()
-        self.wfile.write(data)
+class LeadUpdateRequest(BaseModel):
+    lead_status: Optional[str] = None
+    status: Optional[str] = None
+    contact_status: Optional[str] = None
+    priority: Optional[int] = None
 
-    def do_GET(self) -> None:
-        if self.path.startswith('/api/leads'):
-            try:
-                repo = get_db_repo()
-                leads = repo.get_all_leads_view()
-                self.send_json({"leads": leads})
-            except Exception as e:
-                import traceback
-                traceback.print_exc()
-                self.send_json({"error": str(e)}, 500)
-            return
-            
-        if self.path.startswith('/api/leads/') and self.path.endswith('/events'):
-            try:
-                parts = self.path.split('/')
-                if len(parts) < 4:
-                    self.send_json({"error": "Invalid URL"}, 400)
-                    return
-                lead_id = parts[3]
-                repo = get_db_repo()
-                with repo.get_connection() as conn:
-                    rows = conn.execute("SELECT event_type, old_value, new_value, comment, created_at FROM lead_events WHERE lead_id = ? ORDER BY created_at DESC", (lead_id,)).fetchall()
-                    events = [dict(r) for r in rows]
-                self.send_json({"events": events})
-            except Exception as e:
-                import traceback
-                traceback.print_exc()
-                self.send_json({"error": str(e)}, 500)
-            return
+app = FastAPI(title="Local Lead Studio API")
 
-        if self.path == '/api/settings/export':
-            try:
-                repo = get_db_repo()
-                db_path = repo.db_path
-                if not db_path.exists():
-                    self.send_json({"error": "Database not found"}, 404)
-                    return
-                data = db_path.read_bytes()
-                self.send_response(200)
-                self.send_header("Content-Type", "application/octet-stream")
-                self.send_header("Content-Disposition", 'attachment; filename="app.db"')
-                self.send_header("Content-Length", str(len(data)))
-                self.end_headers()
-                self.wfile.write(data)
-            except Exception as exc:
-                import traceback
-                traceback.print_exc()
-                self.send_json({"error": str(exc)}, 500)
-            return
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 
-    def do_POST(self) -> None:
-        if self.path == '/api/run':
-            try:
-                length = int(self.headers.get("Content-Length") or 0)
-                if not length:
-                    self.send_json({"error": "Missing Content-Length"}, 400)
-                    return
-                config = json.loads(self.rfile.read(length).decode("utf-8"))
-                self.send_json(run_job(config))
-            except Exception as exc:  # noqa: BLE001
-                self.send_json({"error": str(exc)}, 500)
-            return
+@app.get("/api/leads")
+def get_leads():
+    repo = get_db_repo()
+    leads = repo.get_all_leads_view()
+    return {"leads": leads}
 
-        if self.path.startswith('/api/leads/'):
-            try:
-                parts = self.path.split('/')
-                # /api/leads/<id>/events
-                if len(parts) >= 5 and parts[4] == 'events':
-                    lead_id = parts[3]
-                    length = int(self.headers.get("Content-Length") or 0)
-                    body = json.loads(self.rfile.read(length).decode("utf-8"))
-                    comment = body.get("comment", "").strip()
-                    if comment:
-                        import uuid
-                        repo = get_db_repo()
-                        with repo.get_connection() as conn:
-                            conn.execute(
-                                "INSERT INTO lead_events (id, lead_id, event_type, comment) VALUES (?, ?, ?, ?)",
-                                (str(uuid.uuid4()), lead_id, "COMMENT", comment)
-                            )
-                    self.send_json({"success": True})
-                    return
+@app.get("/api/leads/{lead_id}/events")
+def get_lead_events(lead_id: str):
+    repo = get_db_repo()
+    with repo.get_connection() as conn:
+        rows = conn.execute(
+            "SELECT event_type, old_value, new_value, comment, created_at "
+            "FROM lead_events WHERE lead_id = ? ORDER BY created_at DESC", 
+            (lead_id,)
+        ).fetchall()
+        events = [dict(r) for r in rows]
+    return {"events": events}
 
-                # /api/leads/<id>
-                if len(parts) >= 4:
-                    lead_id = parts[3]
-                    length = int(self.headers.get("Content-Length") or 0)
-                    body = json.loads(self.rfile.read(length).decode("utf-8"))
-                    
-                    repo = get_db_repo()
-                    
-                    # We can update lead_status or contact_status or score or reason
-                    with repo.get_connection() as conn:
-                        update_fields = []
-                        values = []
-                        status_val = body.get("lead_status") or body.get("status")
-                        if status_val:
-                            old_status_row = conn.execute("SELECT lead_status FROM leads WHERE id = ?", (lead_id,)).fetchone()
-                            old_status = old_status_row["lead_status"] if old_status_row else ""
-                            
-                            update_fields.append("lead_status = ?")
-                            values.append(status_val)
-                            
-                            import uuid
-                            conn.execute(
-                                "INSERT INTO lead_events (id, lead_id, event_type, old_value, new_value, comment) VALUES (?, ?, ?, ?, ?, ?)",
-                                (str(uuid.uuid4()), lead_id, "STATUS_CHANGE", old_status, status_val, "Изменение статуса вручную")
-                            )
-                            
-                        if "contact_status" in body:
-                            update_fields.append("contact_status = ?")
-                            values.append(body["contact_status"])
-                        if "priority" in body:
-                            update_fields.append("priority = ?")
-                            values.append(int(body["priority"]))
-                        
-                        if update_fields:
-                            values.append(lead_id)
-                            set_clause = ", ".join(update_fields)
-                            conn.execute(f"UPDATE leads SET {set_clause}, updated_at = CURRENT_TIMESTAMP WHERE id = ?", values)
-                            
-                    self.send_json({"success": True})
-            except Exception as e:
-                self.send_json({"error": str(e)}, 500)
-            return
+@app.get("/api/settings/export")
+def export_db():
+    repo = get_db_repo()
+    db_path = repo.db_path
+    if not db_path.exists():
+        raise HTTPException(status_code=404, detail="Database not found")
+    return FileResponse(
+        path=db_path,
+        filename="app.db",
+        media_type="application/octet-stream"
+    )
 
-        if self.path == '/api/settings/clean_db':
-            try:
-                repo = get_db_repo()
-                with repo.get_connection() as conn:
-                    conn.execute("PRAGMA foreign_keys = ON")
-                    # Clean up JUNK, CHAIN, REJECT leads
-                    conn.execute("DELETE FROM leads WHERE lead_status IN ('JUNK', 'CHAIN', 'REJECT')")
-                    conn.commit()
-                self.send_json({"success": True})
-            except Exception as exc:
-                self.send_json({"error": f"Ошибка очистки: {str(exc)}"}, 500)
-            return
+@app.post("/api/run")
+def run_job_api(config: RunJobRequest):
+    return run_job(config.model_dump())
 
-        if self.path == '/api/settings/reset_db':
-            try:
-                repo = get_db_repo()
-                with repo.get_connection() as conn:
-                    conn.execute("PRAGMA foreign_keys = ON")
-                    conn.execute("DELETE FROM lead_events")
-                    conn.execute("DELETE FROM run_results")
-                    conn.execute("DELETE FROM files")
-                    conn.execute("DELETE FROM leads")
-                    conn.execute("DELETE FROM organizations")
-                    conn.execute("DELETE FROM runs")
-                    conn.commit()
-                self.send_json({"success": True})
-            except Exception as exc:
-                self.send_json({"error": f"Ошибка сброса: {str(exc)}"}, 500)
-            return
+@app.post("/api/leads/{lead_id}/events")
+def add_lead_comment(lead_id: str, request: LeadEventCommentRequest):
+    comment = request.comment.strip()
+    if comment:
+        repo = get_db_repo()
+        with repo.get_connection() as conn:
+            conn.execute(
+                "INSERT INTO lead_events (id, lead_id, event_type, comment) VALUES (?, ?, ?, ?)",
+                (str(uuid.uuid4()), lead_id, "COMMENT", comment)
+            )
+    return {"success": True}
+
+@app.post("/api/leads/{lead_id}")
+def update_lead(lead_id: str, request: LeadUpdateRequest):
+    repo = get_db_repo()
+    with repo.get_connection() as conn:
+        update_fields = []
+        values = []
         
-        if self.path == '/api/settings/import':
-            try:
-                length = int(self.headers.get("Content-Length") or 0)
-                if not length:
-                    self.send_json({"error": "Missing file data"}, 400)
-                    return
-                data = self.rfile.read(length)
-                repo = get_db_repo()
-                repo.db_path.parent.mkdir(parents=True, exist_ok=True)
-                repo.db_path.write_bytes(data)
-                self.send_json({"success": True})
-            except Exception as exc:
-                self.send_json({"error": f"Ошибка импорта: {str(exc)}"}, 500)
-            return
-
-        self.send_response(404)
-        self.end_headers()
-
-    def do_DELETE(self) -> None:
-        if self.path.startswith('/api/leads/'):
-            try:
-                parts = self.path.split('/')
-                # /api/leads/<id>
-                if len(parts) >= 4:
-                    lead_id = parts[3]
-                    repo = get_db_repo()
-                    
-                    with repo.get_connection() as conn:
-                        # Find organization_id for the lead to delete it as well
-                        org_row = conn.execute("SELECT organization_id FROM leads WHERE id = ?", (lead_id,)).fetchone()
-                        if org_row:
-                            org_id = org_row["organization_id"]
-                            # Deleting from organizations will cascade delete the lead because of foreign keys
-                            conn.execute("DELETE FROM organizations WHERE id = ?", (org_id,))
-                        else:
-                            # Just in case
-                            conn.execute("DELETE FROM leads WHERE id = ?", (lead_id,))
-                            
-                    self.send_json({"success": True})
-            except Exception as e:
-                self.send_json({"error": str(e)}, 500)
-            return
+        status_val = request.lead_status or request.status
+        if status_val:
+            old_status_row = conn.execute("SELECT lead_status FROM leads WHERE id = ?", (lead_id,)).fetchone()
+            old_status = old_status_row["lead_status"] if old_status_row else ""
             
-        self.send_response(404)
-        self.end_headers()
+            update_fields.append("lead_status = ?")
+            values.append(status_val)
+            
+            conn.execute(
+                "INSERT INTO lead_events (id, lead_id, event_type, old_value, new_value, comment) VALUES (?, ?, ?, ?, ?, ?)",
+                (str(uuid.uuid4()), lead_id, "STATUS_CHANGE", old_status, status_val, "Изменение статуса вручную")
+            )
+            
+        if request.contact_status is not None:
+            update_fields.append("contact_status = ?")
+            values.append(request.contact_status)
+        if request.priority is not None:
+            update_fields.append("priority = ?")
+            values.append(request.priority)
+        
+        if update_fields:
+            values.append(lead_id)
+            set_clause = ", ".join(update_fields)
+            conn.execute(f"UPDATE leads SET {set_clause}, updated_at = CURRENT_TIMESTAMP WHERE id = ?", values)
+            
+    return {"success": True}
+
+@app.post("/api/settings/clean_db")
+def clean_db():
+    repo = get_db_repo()
+    with repo.get_connection() as conn:
+        conn.execute("PRAGMA foreign_keys = ON")
+        conn.execute("DELETE FROM leads WHERE lead_status IN ('JUNK', 'CHAIN', 'REJECT')")
+        conn.commit()
+    return {"success": True}
+
+@app.post("/api/settings/reset_db")
+def reset_db():
+    repo = get_db_repo()
+    with repo.get_connection() as conn:
+        conn.execute("PRAGMA foreign_keys = ON")
+        conn.execute("DELETE FROM lead_events")
+        conn.execute("DELETE FROM run_results")
+        conn.execute("DELETE FROM files")
+        conn.execute("DELETE FROM leads")
+        conn.execute("DELETE FROM organizations")
+        conn.execute("DELETE FROM runs")
+        conn.commit()
+    return {"success": True}
+
+@app.post("/api/settings/import")
+async def import_db(request: FastAPIRequest):
+    data = await request.body()
+    if not data:
+        raise HTTPException(status_code=400, detail="Missing file data")
+    repo = get_db_repo()
+    repo.db_path.parent.mkdir(parents=True, exist_ok=True)
+    repo.db_path.write_bytes(data)
+    return {"success": True}
+
+@app.delete("/api/leads/{lead_id}")
+def delete_lead(lead_id: str):
+    repo = get_db_repo()
+    with repo.get_connection() as conn:
+        org_row = conn.execute("SELECT organization_id FROM leads WHERE id = ?", (lead_id,)).fetchone()
+        if org_row:
+            org_id = org_row["organization_id"]
+            conn.execute("DELETE FROM organizations WHERE id = ?", (org_id,))
+        else:
+            conn.execute("DELETE FROM leads WHERE id = ?", (lead_id,))
+    return {"success": True}
 
 
 def main() -> int:
-    parser = __import__("argparse").ArgumentParser()
+    import argparse
+    parser = argparse.ArgumentParser()
     parser.add_argument("--host", default="127.0.0.1")
     parser.add_argument("--port", type=int, default=8765)
     args = parser.parse_args()
-    server = ThreadingHTTPServer((args.host, args.port), Handler)
-    print(f"http://{args.host}:{args.port}")
-    server.serve_forever()
+    print(f"Starting FastAPI server on http://{args.host}:{args.port}")
+    uvicorn.run("yamap_landing_web:app", host=args.host, port=args.port, reload=False)
     return 0
 
 
