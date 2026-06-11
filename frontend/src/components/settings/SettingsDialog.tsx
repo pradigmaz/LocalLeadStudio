@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useRef } from 'react';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Button } from '@/components/ui/button';
@@ -6,7 +6,7 @@ import { Textarea } from '@/components/ui/textarea';
 import { Card, CardContent } from '@/components/ui/card';
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
 import { ScrollArea } from '@/components/ui/scroll-area';
-import { ChevronDown, Database, Settings, Trash2 } from 'lucide-react';
+import { ChevronDown, Database, Settings, Trash2, Download, Upload } from 'lucide-react';
 import { motion } from 'framer-motion';
 
 interface Preset {
@@ -33,6 +33,7 @@ export function SettingsDialog() {
   const [presets, setPresets] = useState<Preset[]>([]);
   const [rawJson, setRawJson] = useState("");
   const [isCleaning, setIsCleaning] = useState(false);
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   const loadSettings = () => {
     setBlacklist(localStorage.getItem('yamap_blacklist') || defaultBlacklist);
@@ -124,6 +125,39 @@ export function SettingsDialog() {
       alert(`Ошибка при сбросе БД: ${getErrorMessage(error)}`);
     } finally {
       setIsCleaning(false);
+    }
+  };
+
+  const handleExportDB = () => {
+    window.location.href = '/api/settings/export';
+  };
+
+  const handleImportDB = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setIsCleaning(true);
+    try {
+      const buffer = await file.arrayBuffer();
+      const res = await fetch('/api/settings/import', {
+        method: 'POST',
+        body: buffer,
+        headers: {
+          'Content-Type': 'application/octet-stream'
+        }
+      });
+      const data: ApiError = await res.json().catch(() => ({}));
+      if (res.ok) {
+        alert("База данных успешно импортирована.");
+        window.location.reload();
+      } else {
+        alert(`Ошибка при импорте БД: ${data.error || res.statusText || 'Неизвестная ошибка'}`);
+      }
+    } catch (error: unknown) {
+      console.error(error);
+      alert(`Ошибка при импорте БД: ${getErrorMessage(error)}`);
+    } finally {
+      setIsCleaning(false);
+      if (fileInputRef.current) fileInputRef.current.value = '';
     }
   };
 
@@ -253,6 +287,22 @@ export function SettingsDialog() {
                   </Button>
                 </div>
  
+                <div className="flex items-center justify-between border-t border-red-100 pt-3">
+                  <div>
+                    <h5 className="font-medium text-sm text-slate-900">Резервное копирование</h5>
+                    <p className="text-xs text-muted-foreground">Скачать текущую БД или загрузить из файла.</p>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <Button variant="outline" size="sm" onClick={handleExportDB} disabled={isCleaning}>
+                      <Download className="size-4 mr-1" /> Экспорт
+                    </Button>
+                    <Button variant="outline" size="sm" onClick={() => fileInputRef.current?.click()} disabled={isCleaning}>
+                      <Upload className="size-4 mr-1" /> Импорт
+                    </Button>
+                    <input type="file" ref={fileInputRef} onChange={handleImportDB} accept=".db" className="hidden" />
+                  </div>
+                </div>
+
                 <div className="flex items-center justify-between border-t border-red-100 pt-3">
                   <div>
                     <h5 className="font-medium text-sm text-red-700">Полный сброс базы</h5>

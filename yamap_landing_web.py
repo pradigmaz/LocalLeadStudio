@@ -449,7 +449,25 @@ class Handler(BaseHTTPRequestHandler):
                 self.send_json({"error": str(e)}, 500)
             return
 
-
+        if self.path == '/api/settings/export':
+            try:
+                repo = get_db_repo()
+                db_path = repo.db_path
+                if not db_path.exists():
+                    self.send_json({"error": "Database not found"}, 404)
+                    return
+                data = db_path.read_bytes()
+                self.send_response(200)
+                self.send_header("Content-Type", "application/octet-stream")
+                self.send_header("Content-Disposition", 'attachment; filename="app.db"')
+                self.send_header("Content-Length", str(len(data)))
+                self.end_headers()
+                self.wfile.write(data)
+            except Exception as exc:
+                import traceback
+                traceback.print_exc()
+                self.send_json({"error": str(exc)}, 500)
+            return
 
     def do_POST(self) -> None:
         if self.path == '/api/run':
@@ -557,6 +575,21 @@ class Handler(BaseHTTPRequestHandler):
                 self.send_json({"error": f"Ошибка сброса: {str(exc)}"}, 500)
             return
         
+        if self.path == '/api/settings/import':
+            try:
+                length = int(self.headers.get("Content-Length") or 0)
+                if not length:
+                    self.send_json({"error": "Missing file data"}, 400)
+                    return
+                data = self.rfile.read(length)
+                repo = get_db_repo()
+                repo.db_path.parent.mkdir(parents=True, exist_ok=True)
+                repo.db_path.write_bytes(data)
+                self.send_json({"success": True})
+            except Exception as exc:
+                self.send_json({"error": f"Ошибка импорта: {str(exc)}"}, 500)
+            return
+
         self.send_response(404)
         self.end_headers()
 
