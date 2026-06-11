@@ -1,47 +1,25 @@
-﻿# Tehspec Course Tools
+# Local Lead Studio
 
-Локальный пайплайн для личной базы по курсу:
+Инструмент агентства для автоматизированного поиска и фильтрации лидов с Яндекс.Карт.
 
-1. скачать доступное из авторизованной сессии видео;
-2. транскрибировать локальной Whisper-совместимой моделью;
-3. собрать Codex-facing заметки.
+## Архитектура
+Проект разделен на две части:
+1. **Frontend**: Кастомный интерфейс на React (Vite, Tailwind, TypeScript).
+2. **Backend**: Python API (`yamap_landing_web.py`) и ядро парсинга.
 
-Инструменты не обходят оплату, DRM или закрытый доступ. Они работают только с
-HTML урока, cookies или подписанным iframe URL, которые уже доступны владельцу
-аккаунта.
+База данных SQLite хранится в `lead_studio_data/app.db`.
 
-## Проверка видео
+## Запуск
 
-```powershell
-python .\tehspec_course_tools\download_lesson.py --iframe-url "<sign-player URL>" --dry-run
+Единственный правильный способ запуска проекта — использовать скрипт `run.bat` из корневой папки:
+```cmd
+run.bat
 ```
 
-## Скачивание
+Скрипт автоматически запустит:
+1. Vite Dev Server (React) на `http://localhost:5173/`
+2. Python API Backend на порту `8765`
 
-```powershell
-python .\tehspec_course_tools\download_lesson.py --iframe-url "<sign-player URL>"
-```
-
-Если урок открывается в обычном браузере и есть cookies.txt:
-
-```powershell
-python .\tehspec_course_tools\download_lesson.py --lesson-url "https://tehspec.tech/pl/teach/control/lesson/view?id=344156969&editMode=0" --cookies .\cookies.txt
-```
-
-## Транскрибация
-
-`ffmpeg` уже найден в системе. Локальная `.venv` на Python 3.12 создана,
-`faster-whisper` установлен.
-
-```powershell
-.\.venv\Scripts\python .\tehspec_course_tools\transcribe_local.py ".\course_knowledge\media\LESSON.mp4" --model small
-```
-
-CUDA-путь на этой машине сейчас требует системную библиотеку `cublas64_12.dll`,
-поэтому проверенный режим - `--device cpu --compute-type int8`.
-
-## Сборка заметок
-
-```powershell
-python .\tehspec_course_tools\build_codex_docs.py
-```
+## Разработка
+- При внесении изменений в UI работайте в папке `frontend/`.
+- Инструкции для ИИ агентов описаны в файле `AGENTS.md`.

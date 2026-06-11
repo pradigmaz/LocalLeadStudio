@@ -449,13 +449,7 @@ class Handler(BaseHTTPRequestHandler):
                 self.send_json({"error": str(e)}, 500)
             return
 
-        html_path = Path(__file__).with_name("yamap_landing_web.html")
-        data = html_path.read_bytes()
-        self.send_response(200)
-        self.send_header("Content-Type", "text/html; charset=utf-8")
-        self.send_header("Content-Length", str(len(data)))
-        self.end_headers()
-        self.wfile.write(data)
+
 
     def do_POST(self) -> None:
         if self.path == '/api/run':
