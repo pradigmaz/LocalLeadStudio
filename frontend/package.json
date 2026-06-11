@@ -4,7 +4,7 @@
   "version": "0.0.0",
   "type": "module",
   "scripts": {
-    "dev": "concurrently \"vite\" \"python ..\\yamap_landing_web.py --port 8765\"",
+    "dev": "concurrently \"vite\" \"python ..\\backend\\yamap_landing_web.py --port 8765\"",
     "build": "tsc -b && vite build",
     "lint": "eslint .",
     "preview": "vite preview"
