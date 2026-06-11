@@ -4,6 +4,9 @@
 /yamap_landing_runs/
 /lead_studio_data/*.db
 /lead_studio_data/*.sqlite
+/backend/lead_studio_data/*.db
+/frontend/lead_studio_data/*.db
+/test.db
 
 # Python
 __pycache__/
