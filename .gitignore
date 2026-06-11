@@ -1,0 +1,23 @@
+# Защита от мусора и легаси
+/course_scripts/
+/legacy_parser_mvp/
+/yamap_landing_runs/
+/lead_studio_data/*.db
+/lead_studio_data/*.sqlite
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+.venv/
+env/
+venv/
+.codex/
+
+# Node
+node_modules/
+dist/
+
+# IDE
+.idea/
+.vscode/
