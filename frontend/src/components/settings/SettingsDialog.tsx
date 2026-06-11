@@ -6,6 +6,17 @@ import { Textarea } from '@/components/ui/textarea';
 import { Card, CardContent } from '@/components/ui/card';
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
 import { ScrollArea } from '@/components/ui/scroll-area';
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+  AlertDialogTrigger,
+} from "@/components/ui/alert-dialog";
 import { ChevronDown, Database, Settings, Trash2, Download, Upload } from 'lucide-react';
 import { motion } from 'framer-motion';
 
@@ -89,7 +100,6 @@ export function SettingsDialog() {
   };
 
   const handleCleanDB = async () => {
-    if (!window.confirm("Удалить все неликвидные и сетевые лиды?")) return;
     setIsCleaning(true);
     try {
       const res = await fetch('/api/settings/clean_db', { method: 'POST' });
@@ -109,7 +119,6 @@ export function SettingsDialog() {
   };
 
   const handleResetDB = async () => {
-    if (!window.confirm("ВНИМАНИЕ! Это действие удалит ВСЕ лиды из базы. Вы уверены?")) return;
     setIsCleaning(true);
     try {
       const res = await fetch('/api/settings/reset_db', { method: 'POST' });
@@ -311,9 +320,27 @@ export function SettingsDialog() {
                     <h5 className="font-medium text-sm text-slate-900">Очистка мусора</h5>
                     <p className="text-xs text-muted-foreground">Удаляет лиды со статусами Неликвид, Сетевик, Мусор.</p>
                   </div>
-                  <Button variant="outline" size="sm" onClick={handleCleanDB} disabled={isCleaning} className="bg-white border-red-200 hover:bg-red-100 text-red-700 hover:text-red-800">
-                    Очистить
-                  </Button>
+                  <AlertDialog>
+                    <AlertDialogTrigger asChild>
+                      <Button variant="outline" size="sm" disabled={isCleaning} className="bg-white border-red-200 hover:bg-red-100 text-red-700 hover:text-red-800">
+                        Очистить
+                      </Button>
+                    </AlertDialogTrigger>
+                    <AlertDialogContent className="bg-white/90 backdrop-blur-xl border border-slate-200 shadow-xl">
+                      <AlertDialogHeader>
+                        <AlertDialogTitle>Вы точно хотите сделать очистку?</AlertDialogTitle>
+                        <AlertDialogDescription>
+                          Все лиды со статусами «Неликвид», «Сетевик» и «Мусор» будут безвозвратно удалены. Отменить это действие невозможно.
+                        </AlertDialogDescription>
+                      </AlertDialogHeader>
+                      <AlertDialogFooter>
+                        <AlertDialogCancel>Отмена</AlertDialogCancel>
+                        <AlertDialogAction onClick={handleCleanDB} className="bg-red-600 text-white hover:bg-red-700 border-0 shadow-md">
+                          Очистить
+                        </AlertDialogAction>
+                      </AlertDialogFooter>
+                    </AlertDialogContent>
+                  </AlertDialog>
                 </div>
  
                 <div className="flex items-center justify-between border-t border-red-100 pt-3">
@@ -321,9 +348,30 @@ export function SettingsDialog() {
                     <h5 className="font-medium text-sm text-red-700">Полный сброс базы</h5>
                     <p className="text-xs text-red-600/80">Удаляет абсолютно все лиды и результаты парсинга.</p>
                   </div>
-                  <Button variant="destructive" size="sm" onClick={handleResetDB} disabled={isCleaning}>
-                    Сбросить БД
-                  </Button>
+                  <AlertDialog>
+                    <AlertDialogTrigger asChild>
+                      <Button variant="destructive" size="sm" disabled={isCleaning}>
+                        Сбросить БД
+                      </Button>
+                    </AlertDialogTrigger>
+                    <AlertDialogContent className="bg-white/90 backdrop-blur-xl border border-slate-200 shadow-xl">
+                      <AlertDialogHeader>
+                        <AlertDialogTitle>Вы точно хотите сделать полный сброс базы данных?</AlertDialogTitle>
+                        <AlertDialogDescription>
+                          Абсолютно все лиды, результаты парсинга и история изменений будут безвозвратно удалены!
+                          <br/><br/>
+                          <span className="font-medium text-slate-700">Рекомендуется сделать резервную копию перед сбросом на всякий случай.</span>
+                        </AlertDialogDescription>
+                      </AlertDialogHeader>
+                      <AlertDialogFooter className="flex-wrap gap-2 items-center sm:justify-between w-full">
+                        <AlertDialogCancel className="mt-0">Отмена</AlertDialogCancel>
+                        <div className="flex items-center gap-2">
+                          <Button variant="outline" onClick={handleExportDB}><Download className="size-4 mr-2"/> Резервная копия</Button>
+                          <AlertDialogAction onClick={handleResetDB} className="bg-red-600 text-white hover:bg-red-700 border-0 shadow-md">Сбросить без возврата</AlertDialogAction>
+                        </div>
+                      </AlertDialogFooter>
+                    </AlertDialogContent>
+                  </AlertDialog>
                 </div>
               </div>
             </motion.div>
