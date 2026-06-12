@@ -349,87 +349,88 @@ def search_items(query: str, limit: int) -> list[dict]:
     return items[:limit]
 
 
-def extract_city_region(address: str, query: str = "") -> tuple[str, str]:
-    if not address:
-        return "", ""
-    parts = [p.strip() for p in address.split(",")]
-    
-    region = ""
-    city = ""
-    
-    # 1. Identify region first
+def find_region_part(parts: list[str]) -> str:
     for part in parts:
         pl = part.lower()
         if any(w in pl for w in ["область", "обл.", "край", "республика", "респ.", "автономный округ", "ао"]):
-            region = part
-            break
-            
-    # Street/house/neighborhood keywords to filter out parts when looking for a city (whole-word matching)
-    
-    # Common business nouns to skip brand/salon/studio names in addresses
-    
-    # 2. Scan parts for city candidates
-    city_candidates = []
+            return part
+    return ""
+
+
+def city_candidate_parts(parts: list[str], region: str) -> list[str]:
+    candidates = []
     for part in parts:
         pl = part.lower()
         if pl in COUNTRY_INDICATORS:
             continue
         if region and part == region:
             continue
-        # Skip if it contains any digits (postcodes, house numbers, building blocks, etc.)
         if any(char.isdigit() for char in part):
             continue
-        # Skip if it contains Latin letters (to filter out salon names / brands in address)
         if re.search(r'[a-zA-Z]', part):
             continue
-            
-        # Split part into words to match indicators exactly
+
         tokens = set(re.findall(r'[а-яё]+', pl))
         if tokens.intersection(STREET_INDICATORS) or tokens.intersection(STREET_FALLBACK_TOKENS) or tokens.intersection(BUSINESS_INDICATORS):
             continue
-        city_candidates.append(part)
-        
-    if city_candidates:
-        filtered_candidates = [c for c in city_candidates if "район" not in c.lower()]
-        if filtered_candidates:
-            city_indicators = ["город", "г.", "село", "поселок", "посёлок", "рабочий поселок", "рабочий посёлок", "деревня", "р.п.", "п.г.т.", "станица", "хутор"]
-            for cand in filtered_candidates:
-                if any(ind in cand.lower() for ind in city_indicators):
-                    city = cand
-                    break
-            if not city:
-                city = filtered_candidates[0]
-        else:
-            city = city_candidates[0]
-            
-    # Clean up prefixes and municipal structures
-    if city:
-        city_lower = city.lower()
-        if "городской округ" in city_lower:
-            city = city.replace("городской округ", "").replace("городской", "").replace("округ", "").strip()
-        if "городское поселение" in city_lower:
-            city = city.replace("городское поселение", "").replace("городское", "").replace("поселение", "").strip()
-            
-        city = re.sub(
-            r'^(поселок\sгородского\sтипа\s|посёлок\sгородского\sтипа\s|рабочий\sпоселок\s|рабочий\sпосёлок\s|'
-            r'р\.п\.\s|п\.г\.т\.\s|пгт\s|г\.|г\s|город\s|село\s|деревня\s|поселок\s|посёлок\s|станица\s|'
-            r'хутор\s|аул\s|кишлак\s|улус\s|кордон\s|починок\s|разъезд\s|станция\s)+',
-            '', 
-            city, 
-            flags=re.IGNORECASE
-        ).strip()
-        
+        candidates.append(part)
+    return candidates
+
+
+def choose_city_candidate(candidates: list[str]) -> str:
+    if not candidates:
+        return ""
+    filtered_candidates = [c for c in candidates if "район" not in c.lower()]
+    if filtered_candidates:
+        city_indicators = ["город", "г.", "село", "поселок", "посёлок", "рабочий поселок", "рабочий посёлок", "деревня", "р.п.", "п.г.т.", "станица", "хутор"]
+        for cand in filtered_candidates:
+            if any(ind in cand.lower() for ind in city_indicators):
+                return cand
+        return filtered_candidates[0]
+    return candidates[0]
+
+
+def clean_city_name(city: str) -> str:
+    if not city:
+        return ""
+    city_lower = city.lower()
+    if "городской округ" in city_lower:
+        city = city.replace("городской округ", "").replace("городской", "").replace("округ", "").strip()
+    if "городское поселение" in city_lower:
+        city = city.replace("городское поселение", "").replace("городское", "").replace("поселение", "").strip()
+
+    return re.sub(
+        r'^(поселок\sгородского\sтипа\s|посёлок\sгородского\sтипа\s|рабочий\sпоселок\s|рабочий\sпосёлок\s|'
+        r'р\.п\.\s|п\.г\.т\.\s|пгт\s|г\.|г\s|город\s|село\s|деревня\s|поселок\s|посёлок\s|станица\s|'
+        r'хутор\s|аул\s|кишлак\s|улус\s|кордон\s|починок\s|разъезд\s|станция\s)+',
+        '',
+        city,
+        flags=re.IGNORECASE,
+    ).strip()
+
+
+def fallback_known_city(address: str, query: str) -> str:
+    combined = (query or "") + " " + (address or "")
+    for city in KNOWN_CITIES:
+        if re.search(r'\b' + re.escape(city) + r'\b', combined, re.IGNORECASE):
+            return city
+    return ""
+
+
+def extract_city_region(address: str, query: str = "") -> tuple[str, str]:
+    if not address:
+        return "", ""
+
+    parts = [p.strip() for p in address.split(",")]
+    region = find_region_part(parts)
+    city = clean_city_name(choose_city_candidate(city_candidate_parts(parts, region)))
+
     if region:
         region = re.sub(r'^(республика\s)+', '', region, flags=re.IGNORECASE).strip()
-        
-    # Fallback to search query and address for known cities
+
     if not city:
-        combined = (query or "") + " " + (address or "")
-        for c in KNOWN_CITIES:
-            if re.search(r'\b' + re.escape(c) + r'\b', combined, re.IGNORECASE):
-                city = c
-                break
-                    
+        city = fallback_known_city(address, query)
+
     return city, region
 
 
@@ -849,6 +850,101 @@ def sleep_with_cancel(seconds: float, cancel_event: Event | None) -> bool:
         time.sleep(min(remaining, 0.25))
 
 
+def organization_data_from_lead(lead: dict) -> dict:
+    return {
+        "source": "yandex",
+        "source_org_id": str(lead["id"]),
+        "dedupe_key": f"{lead['name']}_{lead['address']}".lower(),
+        "name": lead["name"],
+        "category": lead["category"],
+        "address": lead["address"],
+        "city": lead["city"],
+        "region": lead["region"],
+        "coordinates_json": json.dumps(lead["coordinates"], ensure_ascii=False),
+        "rating": float(lead["rating"]) if lead["rating"] else None,
+        "rating_count": int(lead["rating_count"]) if lead["rating_count"] else 0,
+        "review_count": int(lead["review_count"]) if lead["review_count"] else 0,
+        "phones_json": json.dumps(lead["phones"], ensure_ascii=False),
+        "websites_json": json.dumps(lead["websites"], ensure_ascii=False),
+        "socials_json": json.dumps(lead["socials"], ensure_ascii=False),
+        "hours": lead["hours"],
+        "features_json": json.dumps(lead["features"], ensure_ascii=False),
+        "source_url": lead["yandex_url"],
+        "photos_json": json.dumps(lead["photos"], ensure_ascii=False)
+    }
+
+
+def auto_mark_skipped_lead(repo: SQLiteRepo, lead_db_id: str, reason: str) -> None:
+    current_status = repo.get_lead_status(lead_db_id)
+    if current_status != "NEW":
+        return
+
+    reason_lower = reason.lower()
+    if "сетевик" in reason_lower:
+        repo.update_lead_status(lead_db_id, "CHAIN", current_status, "Авторазметка при парсинге")
+    elif "мало отзывов" in reason_lower or "нет фото" in reason_lower:
+        repo.update_lead_status(lead_db_id, "JUNK", current_status, "Авторазметка при парсинге")
+    elif "популярное место" in reason_lower or "село/деревня" in reason_lower or "вне выбранного города" in reason_lower:
+        repo.update_lead_status(lead_db_id, "REJECT", current_status, "Авторазметка при парсинге")
+
+
+def process_search_item(
+    item: dict,
+    query: str,
+    config: dict,
+    repo: SQLiteRepo,
+    run_id: str,
+    output_root: Path,
+    chain_words: list[str],
+    fields_to_parse: list[str] | None,
+    seen_item_ids: set[str],
+    saved: list[dict],
+    skipped: list[dict],
+    stats: dict,
+) -> None:
+    item_id = str(item.get("id") or "")
+    if item_id and item_id in seen_item_ids:
+        stats["duplicate_count"] += 1
+        skipped.append({"query": query, "name": item.get("title", ""), "reason": "дубль в текущем запуске"})
+        return
+    if item_id:
+        seen_item_ids.add(item_id)
+
+    try:
+        lead = lead_from_item(item, query)
+        apply_fields_to_parse(lead, fields_to_parse)
+
+        if is_chain(lead, chain_words):
+            skipped.append({"query": query, "name": lead["name"], "reason": "сетевик"})
+            stats["skipped_count"] += 1
+            return
+
+        org_id, is_new = repo.upsert_organization(organization_data_from_lead(lead))
+        lead_db_id = repo.create_or_get_lead(org_id, {
+            "lead_type": "REDESIGN" if lead["has_site"] else "NEW_SITE",
+            "lead_status": "NEW",
+            "reason": f"Парсинг: {query}"
+        })
+
+        ok, reason = keep_lead(lead, config, chain_words)
+        if ok:
+            saved_lead = save_lead(lead, output_root, bool(config.get("downloadPhotos")))
+            saved.append(saved_lead)
+            with repo.get_connection() as conn:
+                conn.execute("UPDATE organizations SET data_folder = ? WHERE id = ?", (saved_lead["folder"], org_id))
+            repo.add_run_result(run_id, org_id, query, "SAVED", was_new=is_new)
+            stats["saved_count"] += 1
+            return
+
+        skipped.append({"query": query, "name": lead["name"], "reason": reason})
+        repo.add_run_result(run_id, org_id, query, "SKIPPED", skip_reason=reason, was_new=is_new)
+        stats["skipped_count"] += 1
+        auto_mark_skipped_lead(repo, lead_db_id, reason)
+    except Exception as exc:
+        stats["error_count"] += 1
+        print(f"Error processing item: {exc}")
+
+
 def run_job(
     config: dict,
     progress_callback: Callable[[dict], None] | None = None,
@@ -937,82 +1033,20 @@ def run_job(
             if cancel_event and cancel_event.is_set():
                 status = "CANCELLED"
                 break
-            item_id = str(item.get("id") or "")
-            if item_id and item_id in seen_item_ids:
-                stats["duplicate_count"] += 1
-                skipped.append({"query": query, "name": item.get("title", ""), "reason": "дубль в текущем запуске"})
-                continue
-            if item_id:
-                seen_item_ids.add(item_id)
-            try:
-                lead = lead_from_item(item, query)
-                apply_fields_to_parse(lead, fields_to_parse)
-
-                if is_chain(lead, chain_words):
-                    skipped.append({"query": query, "name": lead["name"], "reason": "сетевик"})
-                    stats["skipped_count"] += 1
-                    continue
-                
-                # Save to DB
-                org_data = {
-                    "source": "yandex",
-                    "source_org_id": str(lead["id"]),
-                    "dedupe_key": f"{lead['name']}_{lead['address']}".lower(),
-                    "name": lead["name"],
-                    "category": lead["category"],
-                    "address": lead["address"],
-                    "city": lead["city"],
-                    "region": lead["region"],
-                    "coordinates_json": json.dumps(lead["coordinates"], ensure_ascii=False),
-                    "rating": float(lead["rating"]) if lead["rating"] else None,
-                    "rating_count": int(lead["rating_count"]) if lead["rating_count"] else 0,
-                    "review_count": int(lead["review_count"]) if lead["review_count"] else 0,
-                    "phones_json": json.dumps(lead["phones"], ensure_ascii=False),
-                    "websites_json": json.dumps(lead["websites"], ensure_ascii=False),
-                    "socials_json": json.dumps(lead["socials"], ensure_ascii=False),
-                    "hours": lead["hours"],
-                    "features_json": json.dumps(lead["features"], ensure_ascii=False),
-                    "source_url": lead["yandex_url"],
-                    "photos_json": json.dumps(lead["photos"], ensure_ascii=False)
-                }
-                
-                org_id, is_new = repo.upsert_organization(org_data)
-                
-                lead_data = {
-                    "lead_type": "REDESIGN" if lead["has_site"] else "NEW_SITE",
-                    "lead_status": "NEW",
-                    "reason": f"Парсинг: {query}"
-                }
-                
-                # If organization already exists, keep its existing status instead of resetting.
-                # create_or_get_lead will safely return existing if it exists.
-                lead_db_id = repo.create_or_get_lead(org_id, lead_data)
-                
-                ok, reason = keep_lead(lead, config, chain_words)
-                if ok:
-                    # Download files / save output to disk
-                    saved_lead = save_lead(lead, output_root, bool(config.get("downloadPhotos")))
-                    saved.append(saved_lead)
-                    with repo.get_connection() as conn:
-                        conn.execute("UPDATE organizations SET data_folder = ? WHERE id = ?", (saved_lead["folder"], org_id))
-                    repo.add_run_result(run_id, org_id, query, "SAVED", was_new=is_new)
-                    stats["saved_count"] += 1
-                else:
-                    skipped.append({"query": query, "name": lead["name"], "reason": reason})
-                    repo.add_run_result(run_id, org_id, query, "SKIPPED", skip_reason=reason, was_new=is_new)
-                    stats["skipped_count"] += 1
-                    
-                    current_status = repo.get_lead_status(lead_db_id)
-                    if current_status == "NEW":
-                        if "сетевик" in reason.lower():
-                            repo.update_lead_status(lead_db_id, "CHAIN", current_status, "Авторазметка при парсинге")
-                        elif "мало отзывов" in reason.lower() or "нет фото" in reason.lower():
-                            repo.update_lead_status(lead_db_id, "JUNK", current_status, "Авторазметка при парсинге")
-                        elif "популярное место" in reason.lower() or "село/деревня" in reason.lower() or "вне выбранного города" in reason.lower():
-                            repo.update_lead_status(lead_db_id, "REJECT", current_status, "Авторазметка при парсинге")
-            except Exception as e:
-                stats["error_count"] += 1
-                print(f"Error processing item: {e}")
+            process_search_item(
+                item=item,
+                query=query,
+                config=config,
+                repo=repo,
+                run_id=run_id,
+                output_root=output_root,
+                chain_words=chain_words,
+                fields_to_parse=fields_to_parse,
+                seen_item_ids=seen_item_ids,
+                saved=saved,
+                skipped=skipped,
+                stats=stats,
+            )
         if status == "CANCELLED":
             break
         if progress_callback:
