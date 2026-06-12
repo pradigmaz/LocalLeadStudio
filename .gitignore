@@ -2,11 +2,15 @@
 /course_scripts/
 /legacy_parser_mvp/
 /yamap_landing_runs/
-/lead_studio_data/*.db
-/lead_studio_data/*.sqlite
+/lead_studio_data/
 /backend/lead_studio_data/*.db
 /frontend/lead_studio_data/*.db
 /test.db
+/backend/yamap_web_*.log
+/frontend/*.png
+/frontend/*debug.png
+/frontend/*smoke.png
+/frontend/test-results/
 
 # Python
 __pycache__/
