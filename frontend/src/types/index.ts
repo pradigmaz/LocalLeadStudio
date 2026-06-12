@@ -14,14 +14,18 @@ export interface LeadEvent {
   created_at: string;
 }
 
+export type LeadType = 'REDESIGN' | 'NEW_SITE';
+export type LeadStatus = 'NEW' | 'POTENTIAL' | 'IN_PROGRESS' | 'PROCESSED' | 'REJECT' | 'JUNK' | 'CHAIN';
+
 export interface Lead {
   id: string;
-  lead_type: 'REDESIGN' | 'NEW_SITE' | string;
-  lead_status: 'NEW' | 'PROCESSED' | 'JUNK' | 'CHAIN' | string;
+  lead_type: LeadType;
+  lead_status: LeadStatus;
   contact_status: string;
   priority: number;
   score: number;
   reason: string | null;
+  viewed_at?: string | null;
   source_org_id: string;
   name: string;
   category: string;
@@ -33,7 +37,7 @@ export interface Lead {
   phones: { number: string; info: string }[];
   social_links: string[];
   source_url: string;
-  data_folder: string;
+  data_folder: string | null;
   photos?: (LeadPhoto | string)[];
   region?: string;
 }
@@ -41,7 +45,9 @@ export interface Lead {
 export interface RunConfig {
   queries: string;
   runName: string;
+  maxQueries: number;
   maxPerQuery: number;
+  requestDelaySeconds: number;
   minReviews: number;
   outputDir: string;
   excludeChains: string;
@@ -57,4 +63,36 @@ export interface RunResult {
   skipped: unknown[];
   output: string;
   error?: string;
+  yandex_guard?: {
+    date: string;
+    search_requests: number;
+    daily_limit: number;
+    remaining: number;
+    cooldown_until: string;
+  };
+}
+
+export type RunJobStatusName =
+  | 'IDLE'
+  | 'RUNNING'
+  | 'CANCEL_REQUESTED'
+  | 'FINISHED'
+  | 'FAILED'
+  | 'CANCELLED'
+  | 'RATE_LIMITED';
+
+export interface RunJobStatus {
+  id?: string;
+  status: RunJobStatusName | string;
+  started_at?: string | null;
+  finished_at?: string | null;
+  current_query?: string;
+  query_index?: number;
+  query_total?: number;
+  saved_count?: number;
+  skipped_count?: number;
+  duplicate_count?: number;
+  error_count?: number;
+  result?: RunResult | null;
+  error?: string | null;
 }

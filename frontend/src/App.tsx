@@ -1,11 +1,12 @@
-import { useState, useEffect } from "react"
+import { useCallback, useEffect, useState } from "react"
 import { SearchForm } from '@/components/search/SearchForm'
+import { ParsingStatus } from '@/components/search/ParsingStatus'
 import { LeadsTable } from '@/components/leads/LeadsTable'
 import { LeadModal } from '@/components/leads/LeadModal'
 import { SettingsDialog } from '@/components/settings/SettingsDialog'
 import { Badge } from "@/components/ui/badge"
 import { Toaster } from "@/components/ui/sonner"
-import type { Lead, RunConfig, RunResult } from '@/types'
+import type { Lead, LeadStatus, RunConfig, RunJobStatus } from '@/types'
 import { NumberTicker } from "@/components/ui/number-ticker"
 import { getErrorMessage, readJson } from "@/lib/api"
 
@@ -14,11 +15,23 @@ interface LeadsResponse {
   error?: string;
 }
 
+const EMPTY_JOB_STATUS: RunJobStatus = { status: 'IDLE' };
+const TERMINAL_JOB_STATUSES = new Set(['FINISHED', 'FAILED', 'CANCELLED', 'RATE_LIMITED']);
+
 function App() {
   const [viewState, setViewState] = useState<'IDLE' | 'LOADING' | 'RESULTS'>('IDLE');
   const [leads, setLeads] = useState<Lead[]>([]);
   const [selectedLead, setSelectedLead] = useState<Lead | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [jobStatus, setJobStatus] = useState<RunJobStatus>(EMPTY_JOB_STATUS);
+
+  const loadLeads = useCallback(async () => {
+    const leadsResponse = await fetch('/api/leads');
+    const leadsData = await readJson<LeadsResponse>(leadsResponse);
+    const nextLeads = leadsData.leads || [];
+    setLeads(nextLeads);
+    return nextLeads;
+  }, []);
 
   useEffect(() => {
     fetch('/api/leads')
@@ -30,12 +43,54 @@ function App() {
         }
       })
       .catch(err => console.error("Failed to fetch initial leads:", err));
-  }, []);
+  }, [loadLeads]);
+
+  useEffect(() => {
+    if (viewState !== 'LOADING') return;
+
+    let isCancelled = false;
+
+    const pollJob = async () => {
+      try {
+        const response = await fetch('/api/run/status');
+        const nextJob = await readJson<RunJobStatus>(response);
+        if (isCancelled) return;
+
+        setJobStatus(nextJob);
+
+        if (TERMINAL_JOB_STATUSES.has(nextJob.status)) {
+          const nextLeads = await loadLeads();
+          if (isCancelled) return;
+
+          if (nextJob.status === 'FAILED') {
+            setError(nextJob.error || 'Сбор завершился ошибкой');
+          } else if (nextJob.status === 'RATE_LIMITED') {
+            setError(nextJob.result?.error || 'Сбор остановлен: лимит Яндекс Карт');
+          }
+
+          setViewState(nextLeads.length > 0 ? 'RESULTS' : 'IDLE');
+        }
+      } catch (err: unknown) {
+        if (isCancelled) return;
+        setError(getErrorMessage(err));
+        setViewState('IDLE');
+      }
+    };
+
+    void pollJob();
+    const timer = window.setInterval(pollJob, 1000);
+
+    return () => {
+      isCancelled = true;
+      window.clearInterval(timer);
+    };
+  }, [loadLeads, viewState]);
 
   const handleRun = async (config: RunConfig) => {
     try {
       setViewState('LOADING');
       setError(null);
+      setJobStatus(EMPTY_JOB_STATUS);
       
       const response = await fetch('/api/run', {
         method: 'POST',
@@ -45,15 +100,8 @@ function App() {
         body: JSON.stringify(config)
       });
       
-      await readJson<RunResult>(response);
-
-      const leadsResponse = await fetch('/api/leads');
-      const leadsData = await readJson<LeadsResponse>(leadsResponse);
-      
-      if (leadsData.leads) {
-        setLeads(leadsData.leads);
-        setViewState('RESULTS');
-      }
+      const startedJob = await readJson<RunJobStatus>(response);
+      setJobStatus(startedJob);
       
     } catch (err: unknown) {
       setError(getErrorMessage(err));
@@ -61,7 +109,13 @@ function App() {
     }
   };
 
-  const handleStatusChange = async (leadId: string, newStatus: string) => {
+  const handleCancelRun = async () => {
+    const response = await fetch('/api/run/cancel', { method: 'POST' });
+    const nextJob = await readJson<RunJobStatus>(response);
+    setJobStatus(nextJob);
+  };
+
+  const handleStatusChange = async (leadId: string, newStatus: LeadStatus) => {
     // Оптимистичное обновление UI (для мгновенной реакции и анимации)
     const previousLeads = [...leads];
     const previousSelectedLead = selectedLead;
@@ -82,6 +136,32 @@ function App() {
     } catch (err) {
       setLeads(previousLeads);
       setSelectedLead(previousSelectedLead);
+      setError(getErrorMessage(err));
+    }
+  };
+
+  const handleLeadClick = async (lead: Lead) => {
+    const previousViewedAt = lead.viewed_at ?? null;
+    const viewedAt = lead.viewed_at || new Date().toISOString();
+    const viewedLead = { ...lead, viewed_at: viewedAt };
+
+    setSelectedLead(viewedLead);
+    if (!lead.viewed_at) {
+      setLeads(current => current.map(l => l.id === lead.id ? { ...l, viewed_at: viewedAt } : l));
+    }
+
+    try {
+      const response = await fetch(`/api/leads/${lead.id}/viewed`, { method: 'POST' });
+      const result = await readJson<{ success: boolean; viewed_at?: string }>(response);
+      if (result.viewed_at && result.viewed_at !== viewedAt) {
+        setLeads(current => current.map(l => l.id === lead.id ? { ...l, viewed_at: result.viewed_at || viewedAt } : l));
+        setSelectedLead(current => current?.id === lead.id ? { ...current, viewed_at: result.viewed_at || viewedAt } : current);
+      }
+    } catch (err) {
+      if (!previousViewedAt) {
+        setLeads(current => current.map(l => l.id === lead.id ? { ...l, viewed_at: null } : l));
+        setSelectedLead(current => current?.id === lead.id ? { ...current, viewed_at: null } : current);
+      }
       setError(getErrorMessage(err));
     }
   };
@@ -146,10 +226,7 @@ function App() {
           </h1>
           <div className="flex items-center gap-4 text-sm text-muted-foreground">
             {viewState === 'LOADING' && (
-              <span className="flex items-center gap-2 text-primary">
-                <span className="w-4 h-4 border-2 border-primary/30 border-t-primary rounded-full animate-spin"></span>
-                Идет парсинг...
-              </span>
+              <ParsingStatus job={jobStatus} onCancel={handleCancelRun} />
             )}
             <SettingsDialog />
           </div>
@@ -180,7 +257,7 @@ function App() {
             )}
 
             {(viewState === 'RESULTS' || leads.length > 0) && (
-              <LeadsTable leads={leads} onLeadClick={setSelectedLead} />
+              <LeadsTable leads={leads} onLeadClick={handleLeadClick} />
             )}
           </div>
         </div>

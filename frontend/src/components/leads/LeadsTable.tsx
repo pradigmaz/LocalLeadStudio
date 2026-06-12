@@ -10,8 +10,6 @@ import {
   TableRow,
 } from "@/components/ui/table"
 import { Search, Star } from "lucide-react"
-import { motion } from "framer-motion"
-import type { Variants } from "framer-motion"
 import type { Lead } from "@/types"
 
 interface LeadsTableProps {
@@ -21,7 +19,7 @@ interface LeadsTableProps {
 
 export function LeadsTable({ leads, onLeadClick }: LeadsTableProps) {
   const [searchTerm, setSearchTerm] = useState("");
-  const [statusFilter, setStatusFilter] = useState<string>("ACTIVE");
+  const [statusFilter, setStatusFilter] = useState<string>("NEW");
   const [typeFilter, setTypeFilter] = useState<string>("ALL");
   const [cityFilter, setCityFilter] = useState<string>("ALL");
   const [reviewFilter, setReviewFilter] = useState<string>("ALL");
@@ -42,6 +40,7 @@ export function LeadsTable({ leads, onLeadClick }: LeadsTableProps) {
     switch(status) {
       case 'NEW': return 'bg-blue-50 text-blue-700 ring-1 ring-inset ring-blue-600/20 border-none shadow-none font-medium';
       case 'POTENTIAL': return 'bg-emerald-50 text-emerald-700 ring-1 ring-inset ring-emerald-600/20 border-none shadow-none font-medium';
+      case 'IN_PROGRESS': return 'bg-indigo-50 text-indigo-700 ring-1 ring-inset ring-indigo-600/20 border-none shadow-none font-medium';
       case 'PROCESSED': return 'bg-amber-50 text-amber-700 ring-1 ring-inset ring-amber-600/20 border-none shadow-none font-medium';
       case 'REJECT': return 'bg-slate-50 text-slate-700 ring-1 ring-inset ring-slate-600/20 border-none shadow-none font-medium';
       case 'CHAIN': return 'bg-zinc-800 text-zinc-100 ring-1 ring-inset ring-zinc-700 border-none shadow-none font-medium';
@@ -53,12 +52,15 @@ export function LeadsTable({ leads, onLeadClick }: LeadsTableProps) {
     switch(status) {
       case 'NEW': return 'Новый';
       case 'POTENTIAL': return 'Потенциальный';
+      case 'IN_PROGRESS': return 'В работе';
       case 'PROCESSED': return 'Отработано';
       case 'REJECT': return 'Неликвид';
       case 'CHAIN': return 'Сетевик';
       default: return status;
     }
   }
+
+  const isViewedNewLead = (lead: Lead) => lead.lead_status === 'NEW' && Boolean(lead.viewed_at);
 
   // Filter logic
   const filteredLeads = leads.filter(lead => {
@@ -67,10 +69,7 @@ export function LeadsTable({ leads, onLeadClick }: LeadsTableProps) {
       (lead.address || "").toLowerCase().includes(searchTerm.toLowerCase()) ||
       (lead.category || "").toLowerCase().includes(searchTerm.toLowerCase());
     
-    const matchesStatus =
-      statusFilter === "ACTIVE"
-        ? lead.lead_status !== "CHAIN" && lead.lead_status !== "REJECT" && lead.lead_status !== "JUNK" && lead.lead_status !== "PROCESSED"
-        : statusFilter === "ALL" || lead.lead_status === statusFilter;
+    const matchesStatus = statusFilter === "ALL" || lead.lead_status === statusFilter;
     
     const matchesType = typeFilter === "ALL" || lead.lead_type === typeFilter;
     
@@ -106,24 +105,6 @@ export function LeadsTable({ leads, onLeadClick }: LeadsTableProps) {
     return 0; // We don't have created_at in Lead type!
   });
 
-  // Animation variants for staggered list
-  const container: Variants = {
-    hidden: { opacity: 0 },
-    show: {
-      opacity: 1,
-      transition: {
-        staggerChildren: 0.03
-      }
-    }
-  };
-
-  const item: Variants = {
-    hidden: { opacity: 0, y: 10 },
-    show: { opacity: 1, y: 0, transition: { type: "spring" as const, stiffness: 300, damping: 24 } }
-  };
-
-  const MotionTableRow = motion.tr;
-
   return (
     <div className="p-1.5 rounded-[2rem] bg-slate-50/50 border border-slate-200/50 shadow-sm flex flex-col">
       <div className="rounded-[calc(2rem-0.375rem)] bg-white/80 backdrop-blur-2xl shadow-[inset_0_1px_1px_rgba(255,255,255,0.8)] border border-slate-100 overflow-hidden flex flex-col flex-1">
@@ -148,11 +129,12 @@ export function LeadsTable({ leads, onLeadClick }: LeadsTableProps) {
                 <SelectValue />
               </SelectTrigger>
               <SelectContent className="rounded-xl shadow-lg border-slate-100">
-                <SelectItem value="ACTIVE" className="rounded-lg cursor-pointer">Активные (Без брака)</SelectItem>
-                <SelectItem value="NEW" className="rounded-lg cursor-pointer">Только новые</SelectItem>
+                <SelectItem value="NEW" className="rounded-lg cursor-pointer">Новые</SelectItem>
                 <SelectItem value="POTENTIAL" className="rounded-lg cursor-pointer">Потенциальные</SelectItem>
-                <SelectItem value="PROCESSED" className="rounded-lg cursor-pointer">Отработано</SelectItem>
-                <SelectItem value="ALL" className="rounded-lg cursor-pointer">Включая скрытые (Все)</SelectItem>
+                <SelectItem value="IN_PROGRESS" className="rounded-lg cursor-pointer">В работе</SelectItem>
+                <SelectItem value="PROCESSED" className="rounded-lg cursor-pointer">Отработанные</SelectItem>
+                <SelectItem value="REJECT" className="rounded-lg cursor-pointer">Неликвид</SelectItem>
+                <SelectItem value="ALL" className="rounded-lg cursor-pointer">Все статусы</SelectItem>
               </SelectContent>
             </Select>
 
@@ -165,8 +147,8 @@ export function LeadsTable({ leads, onLeadClick }: LeadsTableProps) {
               </SelectTrigger>
               <SelectContent className="rounded-xl shadow-lg border-slate-100">
                 <SelectItem value="ALL" className="rounded-lg cursor-pointer">Все сайты</SelectItem>
-                <SelectItem value="REDESIGN" className="rounded-lg cursor-pointer">Редизайн</SelectItem>
                 <SelectItem value="NEW_SITE" className="rounded-lg cursor-pointer">Новый сайт</SelectItem>
+                <SelectItem value="REDESIGN" className="rounded-lg cursor-pointer">Редизайн</SelectItem>
               </SelectContent>
             </Select>
           </div>
@@ -229,16 +211,10 @@ export function LeadsTable({ leads, onLeadClick }: LeadsTableProps) {
               </tr>
             </tbody>
           ) : (
-            <motion.tbody 
-              variants={container}
-              initial="hidden"
-              animate="show"
-              className="divide-y divide-slate-100/50"
-            >
+            <tbody className="divide-y divide-slate-100/50">
               {sortedLeads.map((lead) => (
-                <MotionTableRow 
+                <tr
                   key={lead.id}
-                  variants={item}
                   className="cursor-pointer hover:bg-slate-50/60 hover:shadow-[0_2px_10px_rgb(0,0,0,0.02)] transition-all duration-300 ease-[cubic-bezier(0.32,0.72,0,1)] group border-transparent hover:border-slate-100/50"
                   onClick={() => onLeadClick(lead)}
                 >
@@ -250,6 +226,11 @@ export function LeadsTable({ leads, onLeadClick }: LeadsTableProps) {
                       </Badge>
                     )}
                     <div className="line-clamp-1 group-hover:text-emerald-700 transition-colors duration-300">{lead.name}</div>
+                    {isViewedNewLead(lead) && (
+                      <Badge variant="outline" className="bg-slate-50 text-slate-500 ring-1 ring-inset ring-slate-500/10 border-none shadow-none px-1.5 py-0 h-5 shrink-0 text-[10px] font-medium">
+                        Просмотрено
+                      </Badge>
+                    )}
                   </div>
                   <div className="text-xs text-slate-400 line-clamp-1 mt-1 font-normal group-hover:text-slate-500 transition-colors duration-300">{lead.address || "Адрес не указан"}</div>
                 </TableCell>
@@ -257,7 +238,7 @@ export function LeadsTable({ leads, onLeadClick }: LeadsTableProps) {
                   {lead.city || "-"}
                 </TableCell>
                 <TableCell className="align-middle">
-                  <Badge variant="outline" className={`${getStatusBadgeStyles(lead.lead_status)}`}>
+                  <Badge variant="outline" className={`${getStatusBadgeStyles(lead.lead_status)} ${isViewedNewLead(lead) ? 'opacity-70' : ''}`}>
                     {getStatusLabel(lead.lead_status)}
                   </Badge>
                 </TableCell>
@@ -281,9 +262,9 @@ export function LeadsTable({ leads, onLeadClick }: LeadsTableProps) {
                 <TableCell className="text-right text-muted-foreground text-sm align-middle">
                   {lead.review_count || 0}
                 </TableCell>
-              </MotionTableRow>
+              </tr>
               ))}
-            </motion.tbody>
+            </tbody>
           )}
         </Table>
       </div>

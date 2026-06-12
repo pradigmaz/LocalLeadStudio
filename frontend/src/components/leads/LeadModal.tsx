@@ -2,12 +2,14 @@ import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetDescription } from "@/components/ui/sheet"
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group"
-import { ExternalLink, Globe, Link, Phone, Star, Clock, Send } from "lucide-react"
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip"
+import { ExternalLink, FolderOpen, Globe, Link, Phone, Star, Clock, Send } from "lucide-react"
 import { motion } from "framer-motion"
 import { useState, useEffect } from "react"
 import { toast } from "sonner"
 import { LeadModalPhotos } from "./LeadModalPhotos"
 import { getApiErrorMessage, getErrorMessage } from "@/lib/api"
+import { formatDisplayUrl } from "@/lib/url"
 import {
   AlertDialog,
   AlertDialogAction,
@@ -18,7 +20,7 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog"
-import type { Lead, LeadEvent } from "@/types"
+import type { Lead, LeadEvent, LeadStatus } from "@/types"
 
 interface ApiError {
   error?: string;
@@ -29,17 +31,35 @@ interface LeadModalProps {
   lead: Lead | null;
   isOpen: boolean;
   onClose: () => void;
-  onStatusChange: (leadId: string, newStatus: string) => void;
+  onStatusChange: (leadId: string, newStatus: LeadStatus) => void;
   onPriorityChange: (leadId: string, priority: number) => void;
   onLeadDeleted: (leadId: string) => void;
 }
 
-const STATUSES = [
-  { id: 'NEW', label: 'Новый' },
+type StatusAction = { id: LeadStatus; label: string; hint?: string };
+
+const STATUS_ACTIONS: Partial<Record<LeadStatus, StatusAction[]>> = {
+  NEW: [
+    { id: 'POTENTIAL', label: 'Потенциальный' },
+    { id: 'REJECT', label: 'Неликвид' },
+  ],
+  POTENTIAL: [
+    { id: 'IN_PROGRESS', label: 'Взять в работу' },
+    { id: 'REJECT', label: 'Неликвид' },
+  ],
+  IN_PROGRESS: [
+    { id: 'PROCESSED', label: 'Отработано' },
+    {
+      id: 'POTENTIAL',
+      label: 'Потенциальный',
+      hint: 'Вернуть сюда, если лид взяли в работу ошибочно или решили отложить без закрытия.',
+    },
+  ],
+};
+
+const FALLBACK_STATUS_ACTIONS: StatusAction[] = [
   { id: 'POTENTIAL', label: 'Потенциальный' },
-  { id: 'PROCESSED', label: 'Отработано' },
   { id: 'REJECT', label: 'Неликвид' },
-  { id: 'CHAIN', label: 'Сетевик' }
 ];
 
 const fadeDown = { initial: { opacity: 0, y: -6 }, animate: { opacity: 1, y: 0 } };
@@ -47,12 +67,26 @@ const fadeUp = { initial: { opacity: 0, y: 10 }, animate: { opacity: 1, y: 0 } }
 const fadeLeft = { initial: { opacity: 0, x: -12 }, animate: { opacity: 1, x: 0 } };
 const fadeRight = { initial: { opacity: 0, x: 12 }, animate: { opacity: 1, x: 0 } };
 
+const BOOKING_LINK_RE = /yclients|dikidi|prodoctorov|zoon|nethouse|taplink/i;
+
+const dedupeLinks = (links: string[]) => [...new Set(links.filter(Boolean))];
+
+const getSocialLabel = (url: string) => {
+  if (/vk\.com|vkontakte/i.test(url)) return 'VK';
+  if (/youtube\.com|youtu\.be/i.test(url)) return 'YouTube';
+  if (/t\.me|telegram/i.test(url)) return 'Telegram';
+  if (/wa\.me|whatsapp/i.test(url)) return 'WhatsApp';
+  if (/viber/i.test(url)) return 'Viber';
+  return 'Ссылка';
+};
+
 export function LeadModal({ lead, isOpen, onClose, onStatusChange, onPriorityChange, onLeadDeleted }: LeadModalProps) {
   const [events, setEvents] = useState<LeadEvent[]>([]);
   const [newComment, setNewComment] = useState("");
   const [isLoadingEvents, setIsLoadingEvents] = useState(false);
   const [isDeleteDialogOpen, setIsDeleteDialogOpen] = useState(false);
   const [isBlacklistDialogOpen, setIsBlacklistDialogOpen] = useState(false);
+  const [isOpeningFolder, setIsOpeningFolder] = useState(false);
 
   useEffect(() => {
     let isCancelled = false;
@@ -90,17 +124,21 @@ export function LeadModal({ lead, isOpen, onClose, onStatusChange, onPriorityCha
         body: JSON.stringify({ comment: newComment })
       });
       if (res.ok) {
-        setEvents([{
+        const comment = newComment;
+        setEvents(current => [{
           event_type: "COMMENT",
           old_value: null,
           new_value: null,
-          comment: newComment,
+          comment,
           created_at: new Date().toISOString()
-        }, ...events]);
+        }, ...current]);
         setNewComment("");
+      } else {
+        const data: ApiError = await res.json().catch(() => ({}));
+        toast.error(`Ошибка при добавлении комментария: ${getApiErrorMessage(data, "Ошибка сервера")}`);
       }
-    } catch (e) {
-      console.error(e);
+    } catch (error: unknown) {
+      toast.error(`Ошибка: ${getErrorMessage(error)}`);
     }
   };
 
@@ -141,18 +179,29 @@ export function LeadModal({ lead, isOpen, onClose, onStatusChange, onPriorityCha
     onClose();
   };
 
-  const formatUrl = (url: string) => {
+  const handleOpenLeadFolder = async () => {
+    setIsOpeningFolder(true);
     try {
-      const parsed = new URL(url.startsWith('http') ? url : `https://${url}`);
-      const host = parsed.hostname.replace(/^www\./, '');
-      let path = parsed.pathname;
-      if (path.length > 15) path = path.substring(0, 15) + '...';
-      return host + (path !== '/' ? path : '');
-    } catch {
-      if (url.length > 30) return url.substring(0, 30) + '...';
-      return url;
+      const res = await fetch(`/api/leads/${lead.id}/open-folder`, { method: "POST" });
+      const data: ApiError & { path?: string } = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        toast.error(getApiErrorMessage(data, "Папка карточки не найдена"));
+        return;
+      }
+      toast.success("Папка карточки открыта");
+    } catch (error: unknown) {
+      toast.error(`Ошибка: ${getErrorMessage(error)}`);
+    } finally {
+      setIsOpeningFolder(false);
     }
   };
+
+  const websiteLinks = dedupeLinks(lead.websites || []).filter(link => !BOOKING_LINK_RE.test(link));
+  const socialLinks = dedupeLinks(lead.social_links || []).filter(link => !BOOKING_LINK_RE.test(link));
+  const bookingLinks = dedupeLinks([
+    ...(lead.websites || []),
+    ...(lead.social_links || []),
+  ].filter(link => BOOKING_LINK_RE.test(link)));
 
   return (
     <Sheet open={isOpen} onOpenChange={(open) => !open && onClose()}>
@@ -205,23 +254,24 @@ export function LeadModal({ lead, isOpen, onClose, onStatusChange, onPriorityCha
               <ToggleGroup 
                 type="single" 
                 value={lead.lead_status} 
-                onValueChange={(val) => val && onStatusChange(lead.id, val)}
+                onValueChange={(val) => val && onStatusChange(lead.id, val as LeadStatus)}
                 className="flex flex-wrap gap-2 justify-start"
               >
-                {STATUSES.map(status => {
+                {(STATUS_ACTIONS[lead.lead_status] ?? FALLBACK_STATUS_ACTIONS).map(status => {
                   const isActive = lead.lead_status === status.id;
                   const getStatusBadgeStyles = (id: string) => {
                     switch(id) {
                       case 'NEW': return 'bg-blue-100 border-blue-400 text-blue-800';
                       case 'POTENTIAL': return 'bg-emerald-100 border-emerald-400 text-emerald-800';
+                      case 'IN_PROGRESS': return 'bg-indigo-100 border-indigo-400 text-indigo-800';
                       case 'PROCESSED': return 'bg-amber-100 border-amber-400 text-amber-800';
                       case 'REJECT': return 'bg-slate-200 border-slate-400 text-slate-800';
                       case 'CHAIN': return 'bg-zinc-800 border-zinc-900 text-zinc-100';
                       default: return 'bg-slate-100 border-slate-400 text-slate-800';
                     }
                   };
-                  return (
-                  <ToggleGroupItem
+                  const statusButton = (
+                    <ToggleGroupItem
                     key={status.id}
                     value={status.id}
                     variant="outline"
@@ -243,6 +293,20 @@ export function LeadModal({ lead, isOpen, onClose, onStatusChange, onPriorityCha
                       {status.label}
                     </span>
                   </ToggleGroupItem>
+                  );
+                  if (!status.hint) return statusButton;
+
+                  return (
+                    <TooltipProvider key={status.id}>
+                      <Tooltip>
+                        <TooltipTrigger asChild>
+                          {statusButton}
+                        </TooltipTrigger>
+                        <TooltipContent>
+                          {status.hint}
+                        </TooltipContent>
+                      </Tooltip>
+                    </TooltipProvider>
                   );
                 })}
               </ToggleGroup>
@@ -295,23 +359,19 @@ export function LeadModal({ lead, isOpen, onClose, onStatusChange, onPriorityCha
                     </div>
                   )}
 
-                  {lead.websites && lead.websites.length > 0 ? (
+                  {websiteLinks.length > 0 ? (
                     <div className="space-y-2 pt-2 border-t border-slate-100">
                       <div className="text-xs text-muted-foreground font-medium flex items-center gap-2">
                         <Globe className="size-4" />
                         Сайты
                       </div>
-                      {lead.websites.map((w, i) => {
-                        const isBooking = /yclients|dikidi|prodoctorov|zoon|nethouse|taplink/i.test(w);
-                        return (
+                      {websiteLinks.map((w, i) => (
                         <div key={i} className="flex items-center gap-2 overflow-hidden">
                           <a href={w} target="_blank" rel="noreferrer" className="text-sm font-medium text-primary hover:underline truncate" title={w}>
-                            {formatUrl(w)}
+                            {formatDisplayUrl(w)}
                           </a>
-                          {isBooking && <span className="text-[9px] bg-emerald-100 text-emerald-800 px-1.5 py-0.5 rounded uppercase font-bold shrink-0">Форма записи</span>}
                         </div>
-                        )
-                      })}
+                      ))}
                     </div>
                   ) : (
                     <div className="space-y-2 pt-2 border-t border-slate-100">
@@ -323,29 +383,55 @@ export function LeadModal({ lead, isOpen, onClose, onStatusChange, onPriorityCha
                     </div>
                   )}
 
-                  {lead.social_links && lead.social_links.length > 0 ? (
+                  {bookingLinks.length > 0 && (
+                    <div className="space-y-2 pt-2 border-t border-slate-100">
+                      <div className="text-xs text-muted-foreground font-medium flex items-center gap-2">
+                        <Clock className="size-4" />
+                        Онлайн-запись
+                      </div>
+                      {bookingLinks.map((s, i) => (
+                        <a
+                          key={i}
+                          href={s}
+                          target="_blank"
+                          rel="noreferrer"
+                          className="flex items-center justify-between gap-2 rounded-lg border border-emerald-100 bg-emerald-50/60 px-3 py-2 text-sm font-medium text-emerald-800 hover:bg-emerald-50 transition-colors"
+                          title={s}
+                        >
+                          <span className="truncate">{formatDisplayUrl(s)}</span>
+                          <ExternalLink className="size-3.5 shrink-0" />
+                        </a>
+                      ))}
+                    </div>
+                  )}
+
+                  {socialLinks.length > 0 ? (
                     <div className="space-y-2 pt-2 border-t border-slate-100">
                       <div className="text-xs text-muted-foreground font-medium flex items-center gap-2">
                         <Link className="size-4" />
-                        Соцсети
+                        Соцсети и мессенджеры
                       </div>
-                      {lead.social_links.map((s, i) => {
-                        const isBooking = /yclients|dikidi|prodoctorov|zoon|nethouse|taplink/i.test(s);
-                        return (
-                        <div key={i} className="flex items-center gap-2 overflow-hidden">
-                          <a href={s} target="_blank" rel="noreferrer" className="text-sm font-medium text-primary hover:underline truncate" title={s}>
-                            {formatUrl(s)}
-                          </a>
-                          {isBooking && <span className="text-[9px] bg-emerald-100 text-emerald-800 px-1.5 py-0.5 rounded uppercase font-bold shrink-0">Форма записи</span>}
-                        </div>
-                        )
-                      })}
+                      {socialLinks.map((s, i) => (
+                        <a
+                          key={i}
+                          href={s}
+                          target="_blank"
+                          rel="noreferrer"
+                          className="flex items-center gap-2 overflow-hidden rounded-lg px-2 py-1.5 text-sm font-medium text-primary hover:bg-slate-50 transition-colors"
+                          title={s}
+                        >
+                          <span className="min-w-18 shrink-0 rounded bg-slate-100 px-1.5 py-0.5 text-[10px] font-semibold uppercase text-slate-600">
+                            {getSocialLabel(s)}
+                          </span>
+                          <span className="truncate">{formatDisplayUrl(s)}</span>
+                        </a>
+                      ))}
                     </div>
                   ) : (
                     <div className="space-y-2 pt-2 border-t border-slate-100">
                       <div className="text-xs text-muted-foreground font-medium flex items-center gap-2">
                         <Link className="size-4" />
-                        Соцсети
+                        Соцсети и мессенджеры
                       </div>
                       <span className="text-sm text-muted-foreground italic">Не указаны</span>
                     </div>
@@ -383,6 +469,15 @@ export function LeadModal({ lead, isOpen, onClose, onStatusChange, onPriorityCha
                       </a>
                     </Button>
                   )}
+                  <Button
+                    variant="outline"
+                    className="w-full shrink-0 bg-white"
+                    onClick={handleOpenLeadFolder}
+                    disabled={isOpeningFolder}
+                  >
+                    Открыть папку карточки
+                    <FolderOpen className="ml-2 size-4" />
+                  </Button>
                 </motion.div>
 
                 {lead.reason && (

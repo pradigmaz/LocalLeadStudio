@@ -1,7 +1,7 @@
 import { useState, useRef } from 'react'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent } from '@/components/ui/card'
-import { Download, Upload, AlertTriangle, RefreshCw } from 'lucide-react'
+import { Download, Upload, AlertTriangle } from 'lucide-react'
 import { motion } from 'framer-motion'
 import { toast } from 'sonner'
 import { getApiErrorMessage, getErrorMessage, readJson } from '@/lib/api'
@@ -27,20 +27,6 @@ const LOCAL_ACTION_HEADERS = { 'X-LocalLead-Confirm': '1' };
 export function DatabaseTab() {
   const [isCleaning, setIsCleaning] = useState(false)
   const fileInputRef = useRef<HTMLInputElement>(null)
-
-  const handleCleanDB = async () => {
-    setIsCleaning(true)
-    try {
-      const res = await fetch('/api/settings/clean_db', { method: 'POST', headers: LOCAL_ACTION_HEADERS })
-      await readJson<{ success: boolean }>(res)
-      toast.success("База успешно очищена от мусора.")
-      window.location.reload()
-    } catch (e: unknown) {
-      toast.error(`Ошибка при очистке БД: ${getErrorMessage(e)}`)
-    } finally {
-      setIsCleaning(false)
-    }
-  }
 
   const handleResetDB = async () => {
     setIsCleaning(true)
@@ -96,7 +82,7 @@ export function DatabaseTab() {
       <div>
         <h3 className="text-lg font-semibold text-slate-900">Управление базой данных</h3>
         <p className="text-sm text-slate-500 mt-1">
-          Экспорт, импорт или очистка локальной SQLite базы данных.
+          Экспорт, импорт или полный сброс локальной SQLite базы данных.
         </p>
       </div>
 
@@ -116,32 +102,6 @@ export function DatabaseTab() {
               </Button>
               <input type="file" accept=".db" className="hidden" ref={fileInputRef} onChange={handleImportDB} />
             </div>
-          </CardContent>
-        </Card>
-
-        <Card className="border-orange-200 shadow-sm bg-orange-50/50">
-          <CardContent className="p-4 flex flex-col gap-3">
-            <h4 className="font-medium text-orange-900 flex items-center gap-2">
-              <RefreshCw className="size-4" /> Очистка от мусора
-            </h4>
-            <p className="text-sm text-orange-800/80 mb-2">
-              Удалить все лиды, помеченные как "Мусор", "Сетевик" или "Отказ". Это действие необратимо.
-            </p>
-            <AlertDialog>
-              <AlertDialogTrigger asChild>
-                <Button variant="outline" className="w-full border-orange-200 text-orange-700 hover:bg-orange-100/50">Очистить мусорные лиды</Button>
-              </AlertDialogTrigger>
-              <AlertDialogContent>
-                <AlertDialogHeader>
-                  <AlertDialogTitle>Очистить мусор?</AlertDialogTitle>
-                  <AlertDialogDescription>Все записи со статусами JUNK, CHAIN, REJECT будут удалены из базы данных навсегда.</AlertDialogDescription>
-                </AlertDialogHeader>
-                <AlertDialogFooter>
-                  <AlertDialogCancel>Отмена</AlertDialogCancel>
-                  <AlertDialogAction onClick={handleCleanDB} className="bg-orange-600 hover:bg-orange-700">Очистить</AlertDialogAction>
-                </AlertDialogFooter>
-              </AlertDialogContent>
-            </AlertDialog>
           </CardContent>
         </Card>
 

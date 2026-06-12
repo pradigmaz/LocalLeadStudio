@@ -154,6 +154,9 @@
   * {
     @apply border-border;
   }
+  .stable-scrollbar {
+    scrollbar-gutter: stable;
+  }
   body {
     background-color: var(--background);
     color: var(--foreground);
