@@ -38,6 +38,10 @@ import sys
 sys.path.append(str(Path(__file__).parent.resolve()))
 from lead_studio.adapters.sqlite_repo import SQLiteRepo
 from lead_studio.job_manager import JobManager
+from lead_studio.lead_validation import validate_contact_status, validate_lead_status, validate_priority
+from lead_studio.providers.base import LeadProvider, ProviderBlockedError, ProviderCandidate
+from lead_studio.providers.yandex import YandexProvider
+from lead_studio.providers.twogis import TwogisBrowserBackend, TwogisProvider
 
 ROOT = Path(__file__).parent.resolve()
 PROJECT_ROOT = ROOT.parent
@@ -597,22 +601,20 @@ def is_low_value_locality_address(lead: dict) -> bool:
 
 
 def is_chain(lead: dict, chain_words: list[str]) -> bool:
-    name = (lead["name"] or "").lower()
-    # Normalize punctuation to spaces for whole-word comparison
-    name_clean = re.sub(r'[^\w\sА-Яа-яЁё]', ' ', name)
+    name = lead["name"] or ""
+    name_clean = normalize_filter_text(name)
     words_in_name = name_clean.split()
     
     for word in chain_words:
-        word = word.strip().lower()
-        if not word:
+        raw_word = str(word or "").strip()
+        word_clean = normalize_filter_text(raw_word)
+        if not word_clean:
             continue
-        if " " in word:
-            # Multi-word brand: check substring match
-            if word in name:
+        if " " in word_clean:
+            if word_clean in name_clean:
                 return True
         else:
-            # Single-word brand: match only whole words to prevent substring false positives
-            if word in words_in_name:
+            if word_clean in words_in_name:
                 return True
     websites = " ".join(str(site).lower() for site in lead.get("websites", []))
     if websites and any(domain and domain in websites for domain in CHAIN_DOMAINS):
@@ -851,10 +853,13 @@ def sleep_with_cancel(seconds: float, cancel_event: Event | None) -> bool:
 
 
 def organization_data_from_lead(lead: dict) -> dict:
+    source = lead.get("source") or "yandex"
+    source_url = lead.get("source_url") or lead.get("yandex_url") or ""
+    dedupe_key = SQLiteRepo.dedupe_key_for(lead.get("name"), lead.get("address"))
     return {
-        "source": "yandex",
+        "source": source,
         "source_org_id": str(lead["id"]),
-        "dedupe_key": f"{lead['name']}_{lead['address']}".lower(),
+        "dedupe_key": dedupe_key,
         "name": lead["name"],
         "category": lead["category"],
         "address": lead["address"],
@@ -869,9 +874,40 @@ def organization_data_from_lead(lead: dict) -> dict:
         "socials_json": json.dumps(lead["socials"], ensure_ascii=False),
         "hours": lead["hours"],
         "features_json": json.dumps(lead["features"], ensure_ascii=False),
-        "source_url": lead["yandex_url"],
-        "photos_json": json.dumps(lead["photos"], ensure_ascii=False)
+        "source_url": source_url,
+        "photos_json": json.dumps(lead["photos"], ensure_ascii=False),
+        "raw_json": json.dumps(lead.get("source_row") or {}, ensure_ascii=False),
     }
+
+
+def build_providers(config: dict) -> list[LeadProvider]:
+    priority = config.get("providerPriority") or config.get("provider_priority") or "yandex"
+    enabled = config.get("enabledProviders") or config.get("enabled_providers") or ["yandex", "2gis"]
+    enabled = [source for source in enabled if source in {"yandex", "2gis"}]
+    if not enabled:
+        enabled = ["yandex"]
+
+    provider_map: dict[str, LeadProvider] = {
+        "yandex": YandexProvider(search_items, lead_from_item),
+        "2gis": TwogisProvider(TwogisBrowserBackend(
+            browser=str(config.get("twogis_browser") or "auto"),
+            browser_path=str(config.get("twogis_browser_path") or ""),
+            quiet=bool(config.get("twogis_quiet_mode", True)),
+        )),
+    }
+    ordered = []
+    if priority in enabled:
+        ordered.append(priority)
+    ordered.extend(source for source in enabled if source != priority)
+    return [provider_map[source] for source in ordered]
+
+
+def default_max_scan(max_per_query: int, config: dict) -> int:
+    raw_scan = config.get("maxScanPerQuery")
+    if raw_scan is not None:
+        return clamp_int(raw_scan, max(max_per_query, 1), max_per_query, 100)
+    multiplier = clamp_int(config.get("max_scan_multiplier"), 5, 1, 20)
+    return min(100, max(30, max_per_query * multiplier))
 
 
 def auto_mark_skipped_lead(repo: SQLiteRepo, lead_db_id: str, reason: str) -> None:
@@ -945,6 +981,78 @@ def process_search_item(
         print(f"Error processing item: {exc}")
 
 
+def process_candidate(
+    candidate: ProviderCandidate,
+    query: str,
+    config: dict,
+    repo: SQLiteRepo,
+    run_id: str,
+    output_root: Path,
+    chain_words: list[str],
+    fields_to_parse: list[str] | None,
+    seen_source_ids: set[str],
+    saved: list[dict],
+    skipped: list[dict],
+    stats: dict,
+) -> bool:
+    source_key = f"{candidate.source}:{candidate.source_org_id}"
+    stats["scan_count"] += 1
+    if source_key in seen_source_ids:
+        stats["duplicate_count"] += 1
+        skipped.append({"query": query, "name": candidate.name, "reason": "дубль в текущем запуске"})
+        return False
+    seen_source_ids.add(source_key)
+
+    try:
+        lead = candidate.to_lead(query)
+        apply_fields_to_parse(lead, fields_to_parse)
+
+        if is_chain(lead, chain_words):
+            skipped.append({"query": query, "name": lead["name"], "reason": "сетевик"})
+            stats["skipped_count"] += 1
+            return False
+
+        ok, reason = keep_lead(lead, config, chain_words)
+        merge_result = repo.merge_organization(organization_data_from_lead(lead), {
+            "lead_type": "REDESIGN" if lead["has_site"] else "NEW_SITE",
+            "lead_status": "NEW",
+            "reason": f"Парсинг {candidate.source}: {query}",
+        })
+        org_id = merge_result["organization_id"]
+        lead_db_id = merge_result["lead_id"]
+        action = merge_result["action"]
+
+        if action == "CREATED":
+            stats["created_count"] += 1
+        elif action == "ENRICHED":
+            stats["enriched_count"] += 1
+        else:
+            stats["existing_count"] += 1
+
+        if ok:
+            if action == "CREATED":
+                saved_lead = save_lead(lead, output_root, bool(config.get("downloadPhotos")))
+                saved.append(saved_lead)
+                with repo.get_connection() as conn:
+                    conn.execute(
+                        "UPDATE organizations SET data_folder = ? WHERE id = ? AND (data_folder IS NULL OR data_folder = '')",
+                        (saved_lead["folder"], org_id),
+                    )
+            repo.add_run_result(run_id, org_id, f"{candidate.source}:{query}", action, was_new=action == "CREATED", was_updated=action == "ENRICHED")
+            stats["saved_count"] += 1 if action in {"CREATED", "ENRICHED"} else 0
+            return action in {"CREATED", "ENRICHED"}
+
+        skipped.append({"query": query, "name": lead["name"], "reason": reason})
+        repo.add_run_result(run_id, org_id, f"{candidate.source}:{query}", "SKIPPED", skip_reason=reason, was_new=action == "CREATED", was_updated=action == "ENRICHED")
+        stats["skipped_count"] += 1
+        auto_mark_skipped_lead(repo, lead_db_id, reason)
+        return False
+    except Exception as exc:
+        stats["error_count"] += 1
+        print(f"Error processing {candidate.source} item: {exc}")
+        return False
+
+
 def run_job(
     config: dict,
     progress_callback: Callable[[dict], None] | None = None,
@@ -969,85 +1077,126 @@ def run_job(
         MAX_YANDEX_DELAY_SECONDS,
     )
     fields_to_parse = config.get("fields_to_parse")
-    
     # Initialize DB Repo
     repo = get_db_repo()
+    preferences = repo.get_preferences()
+    effective_config = {**preferences, **{key: value for key, value in config.items() if value is not None}}
+    providers = build_providers(effective_config)
+    max_scan_per_query = default_max_scan(max_per_query, effective_config)
     
     # Track the run
     run_id = repo.create_run({
         "name": config.get("runName") or "yamap_run",
         "region": "",
         "queries_json": json.dumps(queries, ensure_ascii=False),
-        "filters_json": json.dumps(config, ensure_ascii=False),
+        "filters_json": json.dumps(effective_config, ensure_ascii=False),
         "output_folder": str(output_root)
     })
     
     saved, skipped = [], []
-    stats = {"saved_count": 0, "skipped_count": 0, "duplicate_count": 0, "error_count": 0}
+    stats = {
+        "saved_count": 0,
+        "skipped_count": 0,
+        "duplicate_count": 0,
+        "error_count": 0,
+        "scan_count": 0,
+        "created_count": 0,
+        "enriched_count": 0,
+        "existing_count": 0,
+    }
     status = "FINISHED"
     rate_limit_error = ""
+    blocked_source = ""
 
     if progress_callback:
-        progress_callback({"query_total": len(queries), "query_index": 0})
+        progress_callback({"query_total": len(queries), "query_index": 0, "provider_total": len(providers)})
 
-    seen_item_ids = set()
-    last_request_at = 0.0
+    seen_source_ids = set()
+    last_request_at = {"yandex": 0.0, "2gis": 0.0}
     for query_index, query in enumerate(queries, 1):
         if cancel_event and cancel_event.is_set():
             status = "CANCELLED"
             break
-        if progress_callback:
-            progress_callback({"current_query": query, "query_index": query_index, **stats})
 
-        elapsed = time.monotonic() - last_request_at
-        wait_time = request_delay + random.uniform(0, YANDEX_JITTER_SECONDS) - elapsed
-        if last_request_at and wait_time > 0 and not sleep_with_cancel(wait_time, cancel_event):
-            status = "CANCELLED"
-            break
-
-        try:
-            require_yandex_request_slot()
-            record_yandex_search_attempt()
-            items = search_items(query, max_per_query)
-            last_request_at = time.monotonic()
-        except RuntimeError as exc:
-            stats["error_count"] += 1
-            status = "RATE_LIMITED"
-            rate_limit_error = str(exc)
-            break
-        except HTTPError as exc:
-            stats["error_count"] += 1
-            if exc.code in YANDEX_STOP_CODES:
-                record_yandex_cooldown(exc.code)
-                status = "RATE_LIMITED"
-                rate_limit_error = f"Яндекс вернул HTTP {exc.code}; сбор остановлен, чтобы не усиливать блокировку"
-                break
-            skipped.append({"query": query, "name": "", "reason": f"HTTP {exc.code}"})
-            continue
-        except (URLError, TimeoutError, ValueError) as exc:
-            stats["error_count"] += 1
-            skipped.append({"query": query, "name": "", "reason": f"Ошибка запроса: {exc}"})
-            continue
-
-        for item in items:
+        for provider_index, provider in enumerate(providers, 1):
             if cancel_event and cancel_event.is_set():
                 status = "CANCELLED"
                 break
-            process_search_item(
-                item=item,
-                query=query,
-                config=config,
-                repo=repo,
-                run_id=run_id,
-                output_root=output_root,
-                chain_words=chain_words,
-                fields_to_parse=fields_to_parse,
-                seen_item_ids=seen_item_ids,
-                saved=saved,
-                skipped=skipped,
-                stats=stats,
-            )
-        if status == "CANCELLED":
+            if progress_callback:
+                progress_callback({
+                    "current_query": query,
+                    "query_index": query_index,
+                    "current_provider": provider.source,
+                    "provider_index": provider_index,
+                    "provider_total": len(providers),
+                    **stats,
+                })
+
+            elapsed = time.monotonic() - last_request_at.get(provider.source, 0.0)
+            wait_time = request_delay + random.uniform(0, YANDEX_JITTER_SECONDS) - elapsed
+            if last_request_at.get(provider.source) and wait_time > 0 and not sleep_with_cancel(wait_time, cancel_event):
+                status = "CANCELLED"
+                break
+
+            useful_count = 0
+            try:
+                if provider.source == "yandex":
+                    require_yandex_request_slot()
+                    record_yandex_search_attempt()
+                if provider.source == "2gis":
+                    candidates = provider.search(query, max_scan_per_query, cancel_event=cancel_event)  # type: ignore[call-arg]
+                else:
+                    candidates = provider.search(query, max_scan_per_query)
+                for candidate in candidates:
+                    if cancel_event and cancel_event.is_set():
+                        status = "CANCELLED"
+                        break
+                    changed = process_candidate(
+                        candidate=candidate,
+                        query=query,
+                        config=effective_config,
+                        repo=repo,
+                        run_id=run_id,
+                        output_root=output_root,
+                        chain_words=chain_words,
+                        fields_to_parse=fields_to_parse,
+                        seen_source_ids=seen_source_ids,
+                        saved=saved,
+                        skipped=skipped,
+                        stats=stats,
+                    )
+                    useful_count += 1 if changed else 0
+                    if progress_callback:
+                        progress_callback(stats)
+                    if useful_count >= max_per_query:
+                        break
+                last_request_at[provider.source] = time.monotonic()
+            except ProviderBlockedError as exc:
+                stats["error_count"] += 1
+                blocked_source = exc.source
+                skipped.append({"query": query, "name": "", "reason": str(exc)})
+                if progress_callback:
+                    progress_callback({"blocked_source": blocked_source, **stats})
+            except RuntimeError as exc:
+                if cancel_event and cancel_event.is_set():
+                    status = "CANCELLED"
+                    break
+                stats["error_count"] += 1
+                status = "RATE_LIMITED"
+                rate_limit_error = str(exc)
+                break
+            except HTTPError as exc:
+                stats["error_count"] += 1
+                if provider.source == "yandex" and exc.code in YANDEX_STOP_CODES:
+                    record_yandex_cooldown(exc.code)
+                    status = "RATE_LIMITED"
+                    rate_limit_error = f"Яндекс вернул HTTP {exc.code}; сбор остановлен, чтобы не усиливать блокировку"
+                    break
+                skipped.append({"query": query, "name": "", "reason": f"{provider.source} HTTP {exc.code}"})
+            except (URLError, TimeoutError, ValueError) as exc:
+                stats["error_count"] += 1
+                skipped.append({"query": query, "name": "", "reason": f"{provider.source} ошибка запроса: {exc}"})
+        if status == "CANCELLED" or status == "RATE_LIMITED":
             break
         if progress_callback:
             progress_callback(stats)
@@ -1062,7 +1211,10 @@ def run_job(
             "run_id": run_id,
             "status": status,
             "error": rate_limit_error,
+            "blocked_source": blocked_source,
+            "stats": stats,
             "query_limit_applied": len(raw_queries) > len(queries),
+            "max_scan_per_query": max_scan_per_query,
             "yandex_guard": yandex_guard_status(),
         }, ensure_ascii=False, indent=2),
         encoding="utf-8",
@@ -1074,7 +1226,10 @@ def run_job(
         "run_id": run_id,
         "status": status,
         "error": rate_limit_error,
+        "blocked_source": blocked_source,
+        "stats": stats,
         "query_count": len(queries),
+        "max_scan_per_query": max_scan_per_query,
         "yandex_guard": yandex_guard_status(),
         "_job_status": status,
     }
@@ -1098,6 +1253,20 @@ class RunJobRequest(BaseModel):
     requirePhotos: Optional[bool] = True
     # New fields for toggling parsed data
     fields_to_parse: Optional[list[str]] = None
+    providerPriority: Optional[str] = None
+    enabledProviders: Optional[list[str]] = None
+    maxScanPerQuery: Optional[int] = None
+    max_scan_multiplier: Optional[int] = None
+
+
+class PreferencesRequest(BaseModel):
+    provider_priority: Optional[str] = None
+    enabled_providers: Optional[list[str]] = None
+    max_scan_multiplier: Optional[int] = None
+    twogis_mode: Optional[str] = None
+    twogis_browser: Optional[str] = None
+    twogis_browser_path: Optional[str] = None
+    twogis_quiet_mode: Optional[bool] = None
 
 class LeadEventCommentRequest(BaseModel):
     comment: str
@@ -1140,7 +1309,7 @@ def get_lead_events(lead_id: str):
 
 @app.post("/api/leads/{lead_id}/viewed")
 def mark_lead_viewed(lead_id: str, request: FastAPIRequest):
-    require_local_request(request)
+    require_local_request(request, require_confirm=True)
     repo = get_db_repo()
     viewed_at = repo.mark_lead_viewed(lead_id)
     if viewed_at is None:
@@ -1150,7 +1319,7 @@ def mark_lead_viewed(lead_id: str, request: FastAPIRequest):
 
 @app.post("/api/leads/{lead_id}/open-folder")
 def open_lead_folder(lead_id: str, request: FastAPIRequest):
-    require_local_request(request)
+    require_local_request(request, require_confirm=True)
     folder = find_lead_folder(lead_id)
     if not folder:
         raise HTTPException(status_code=404, detail="Папка карточки не найдена. Запустите сбор заново или проверьте output-папку.")
@@ -1207,9 +1376,22 @@ def get_cities(
 def get_categories():
     return load_json_data(data_file("categories.json"), [])
 
+
+@app.get("/api/settings/preferences")
+def get_preferences(request: FastAPIRequest):
+    require_local_request(request)
+    return get_db_repo().get_preferences()
+
+
+@app.post("/api/settings/preferences")
+def save_preferences(preferences: PreferencesRequest, request: FastAPIRequest):
+    require_local_request(request, require_confirm=True)
+    return get_db_repo().save_preferences(preferences.model_dump(exclude_unset=True))
+
+
 @app.post("/api/run")
 def run_job_api(config: RunJobRequest, request: FastAPIRequest):
-    require_local_request(request)
+    require_local_request(request, require_confirm=True)
     try:
         return JOB_MANAGER.start(config.model_dump())
     except RuntimeError as exc:
@@ -1224,12 +1406,12 @@ def run_status_api(request: FastAPIRequest):
 
 @app.post("/api/run/cancel")
 def cancel_run_api(request: FastAPIRequest):
-    require_local_request(request)
+    require_local_request(request, require_confirm=True)
     return JOB_MANAGER.cancel()
 
 @app.post("/api/leads/{lead_id}/events")
 def add_lead_comment(lead_id: str, request: LeadEventCommentRequest, http_request: FastAPIRequest):
-    require_local_request(http_request)
+    require_local_request(http_request, require_confirm=True)
     comment = request.comment.strip()
     if comment:
         repo = get_db_repo()
@@ -1242,7 +1424,7 @@ def add_lead_comment(lead_id: str, request: LeadEventCommentRequest, http_reques
 
 @app.post("/api/leads/{lead_id}")
 def update_lead(lead_id: str, request: LeadUpdateRequest, http_request: FastAPIRequest):
-    require_local_request(http_request)
+    require_local_request(http_request, require_confirm=True)
     repo = get_db_repo()
     with repo.get_connection() as conn:
         lead_row = conn.execute("SELECT id, lead_status FROM leads WHERE id = ?", (lead_id,)).fetchone()
@@ -1254,6 +1436,7 @@ def update_lead(lead_id: str, request: LeadUpdateRequest, http_request: FastAPIR
         
         status_val = request.lead_status or request.status
         if status_val:
+            validate_lead_status(status_val)
             old_status = lead_row["lead_status"]
             update_fields.append("lead_status = ?")
             values.append(status_val)
@@ -1264,9 +1447,11 @@ def update_lead(lead_id: str, request: LeadUpdateRequest, http_request: FastAPIR
             )
             
         if request.contact_status is not None:
+            validate_contact_status(request.contact_status)
             update_fields.append("contact_status = ?")
             values.append(request.contact_status)
         if request.priority is not None:
+            validate_priority(request.priority)
             update_fields.append("priority = ?")
             values.append(request.priority)
         
