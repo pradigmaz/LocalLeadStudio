@@ -1,8 +1,8 @@
 import { Button } from "@/components/ui/button"
 import { cn } from "@/lib/utils"
-import { Shield, Database } from "lucide-react"
+import { Database, MapPinned, Shield } from "lucide-react"
 
-export type SettingsTabId = "blacklist" | "database"
+export type SettingsTabId = "blacklist" | "sources" | "database"
 
 interface SettingsSidebarProps {
   activeTab: SettingsTabId
@@ -11,6 +11,7 @@ interface SettingsSidebarProps {
 
 const TABS = [
   { id: "blacklist", label: "Чёрный список", icon: Shield },
+  { id: "sources", label: "Источники", icon: MapPinned },
   { id: "database", label: "База данных", icon: Database },
 ] as const
 

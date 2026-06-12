@@ -16,6 +16,15 @@ export interface LeadEvent {
 
 export type LeadType = 'REDESIGN' | 'NEW_SITE';
 export type LeadStatus = 'NEW' | 'POTENTIAL' | 'IN_PROGRESS' | 'PROCESSED' | 'REJECT' | 'JUNK' | 'CHAIN';
+export type ProviderSource = 'yandex' | '2gis';
+
+export interface LeadSource {
+  source: ProviderSource | string;
+  source_org_id?: string;
+  source_url: string;
+  first_seen_at?: string;
+  last_seen_at?: string;
+}
 
 export interface Lead {
   id: string;
@@ -37,9 +46,32 @@ export interface Lead {
   phones: { number: string; info: string }[];
   social_links: string[];
   source_url: string;
+  sources?: LeadSource[];
   data_folder: string | null;
   photos?: (LeadPhoto | string)[];
   region?: string;
+}
+
+export interface ProviderPreferences {
+  provider_priority: ProviderSource | null;
+  enabled_providers: ProviderSource[];
+  max_scan_multiplier: number;
+  twogis_mode: 'browser' | string;
+  twogis_browser:
+    | 'auto'
+    | 'chrome'
+    | 'edge'
+    | 'yandex'
+    | 'opera'
+    | 'opera_gx'
+    | 'brave'
+    | 'vivaldi'
+    | 'firefox'
+    | 'safari'
+    | 'custom'
+    | string;
+  twogis_browser_path: string;
+  twogis_quiet_mode: boolean;
 }
 
 export interface RunConfig {
@@ -56,6 +88,10 @@ export interface RunConfig {
   requirePhotos: boolean;
   downloadPhotos: boolean;
   fields_to_parse?: string[];
+  providerPriority?: ProviderSource;
+  enabledProviders?: ProviderSource[];
+  maxScanPerQuery?: number;
+  max_scan_multiplier?: number;
 }
 
 export interface RunResult {
@@ -63,6 +99,17 @@ export interface RunResult {
   skipped: unknown[];
   output: string;
   error?: string;
+  blocked_source?: ProviderSource | string;
+  stats?: {
+    saved_count?: number;
+    skipped_count?: number;
+    duplicate_count?: number;
+    error_count?: number;
+    scan_count?: number;
+    created_count?: number;
+    enriched_count?: number;
+    existing_count?: number;
+  };
   yandex_guard?: {
     date: string;
     search_requests: number;
@@ -93,6 +140,14 @@ export interface RunJobStatus {
   skipped_count?: number;
   duplicate_count?: number;
   error_count?: number;
+  current_provider?: ProviderSource | string;
+  provider_index?: number;
+  provider_total?: number;
+  scan_count?: number;
+  created_count?: number;
+  enriched_count?: number;
+  existing_count?: number;
+  blocked_source?: ProviderSource | string;
   result?: RunResult | null;
   error?: string | null;
 }

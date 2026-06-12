@@ -17,6 +17,12 @@ const getSocialLabel = (url: string) => {
   return 'Ссылка';
 };
 
+const getSourceLabel = (source: string) => {
+  if (source === 'yandex') return 'Открыть в Яндекс';
+  if (source === '2gis') return 'Открыть в 2GIS';
+  return 'Открыть источник';
+};
+
 interface LeadModalInfoGridProps {
   lead: Lead;
   websiteLinks: string[];
@@ -34,6 +40,12 @@ export function LeadModalInfoGrid({
   isOpeningFolder,
   onOpenLeadFolder,
 }: LeadModalInfoGridProps) {
+  const sourceLinks = lead.sources && lead.sources.length > 0
+    ? lead.sources.filter((source) => source.source_url)
+    : lead.source_url
+      ? [{ source: 'yandex', source_url: lead.source_url }]
+      : [];
+
   return (
     <div className="grid grid-cols-2 gap-6">
       <div className="space-y-6">
@@ -151,14 +163,14 @@ export function LeadModalInfoGrid({
             )}
           </div>
 
-          {lead.source_url && (
-            <Button variant="outline" className="w-full shrink-0 bg-white" asChild>
-              <a href={lead.source_url} target="_blank" rel="noreferrer">
-                Открыть в Яндекс Картах
+          {sourceLinks.map((source) => (
+            <Button key={`${source.source}:${source.source_url}`} variant="outline" className="w-full shrink-0 bg-white" asChild>
+              <a href={source.source_url} target="_blank" rel="noreferrer">
+                {getSourceLabel(source.source)}
                 <ExternalLink className="ml-2 size-4" />
               </a>
             </Button>
-          )}
+          ))}
           <Button
             variant="outline"
             className="w-full shrink-0 bg-white"

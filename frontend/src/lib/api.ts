@@ -3,6 +3,9 @@ type ApiErrorBody = {
   detail?: unknown;
 };
 
+export const LOCAL_ACTION_HEADERS = { "X-LocalLead-Confirm": "1" };
+export const JSON_ACTION_HEADERS = { "Content-Type": "application/json", ...LOCAL_ACTION_HEADERS };
+
 const formatDetail = (detail: unknown): string | null => {
   if (typeof detail === "string") return detail;
   if (Array.isArray(detail)) {

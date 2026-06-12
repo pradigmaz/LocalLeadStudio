@@ -7,7 +7,7 @@ import { Badge } from "@/components/ui/badge"
 import { Checkbox } from "@/components/ui/checkbox"
 import { Input } from "@/components/ui/input"
 import { Settings2 } from "lucide-react"
-import type { RunConfig } from "@/types"
+import type { ProviderPreferences, ProviderSource, RunConfig } from "@/types"
 import { SearchBuilderPanel } from "./SearchBuilderPanel"
 import type { BuilderState } from "./searchBuilderTypes"
 
@@ -16,6 +16,7 @@ type TabId = "builder" | "manual"
 interface SearchFormProps {
   onRun: (config: RunConfig) => Promise<void>
   isLoading: boolean
+  preferences: ProviderPreferences | null
 }
 
 const FIELD_LABELS = [
@@ -28,6 +29,7 @@ const FIELD_LABELS = [
 const MAX_SAFE_QUERIES = 40
 const MAX_SAFE_PER_QUERY = 10
 const MIN_SAFE_DELAY_SECONDS = 8
+const DEFAULT_ENABLED_PROVIDERS: ProviderSource[] = ["yandex", "2gis"]
 
 const defaultBuilderState: BuilderState = {
   regionNames: [],
@@ -35,7 +37,7 @@ const defaultBuilderState: BuilderState = {
   niches: [],
 }
 
-const defaultConfig = (): RunConfig => ({
+const defaultConfig = (preferences?: ProviderPreferences | null): RunConfig => ({
   queries: "",
   runName: "lead_search",
   maxQueries: MAX_SAFE_QUERIES,
@@ -49,6 +51,9 @@ const defaultConfig = (): RunConfig => ({
   requirePhotos: true,
   downloadPhotos: false,
   fields_to_parse: ["sites", "socials", "phones", "photos"],
+  providerPriority: preferences?.provider_priority ?? "yandex",
+  enabledProviders: preferences?.enabled_providers?.length ? preferences.enabled_providers : DEFAULT_ENABLED_PROVIDERS,
+  max_scan_multiplier: preferences?.max_scan_multiplier ?? 5,
 })
 
 const normalizeQueryLine = (line: string) => line.replace(/\s+/g, " ").trim()
@@ -79,11 +84,11 @@ const buildQueryStats = (value: string) => {
   }
 }
 
-export function SearchForm({ onRun, isLoading }: SearchFormProps) {
+export function SearchForm({ onRun, isLoading, preferences }: SearchFormProps) {
   const [builderState, setBuilderState] = useState<BuilderState>(defaultBuilderState)
   const [activeTab, setActiveTab] = useState<TabId>("builder")
   const [showParserOptions, setShowParserOptions] = useState(false)
-  const [config, setConfig] = useState<RunConfig>(defaultConfig)
+  const [config, setConfig] = useState<RunConfig>(() => defaultConfig(preferences))
 
   const builderQueries = useMemo(() => (
     builderState.cities.flatMap((city) =>
@@ -104,6 +109,13 @@ export function SearchForm({ onRun, isLoading }: SearchFormProps) {
     maxQueries: safeMaxQueries,
     maxPerQuery: clampNumber(config.maxPerQuery, 1, MAX_SAFE_PER_QUERY),
     requestDelaySeconds: clampNumber(config.requestDelaySeconds, MIN_SAFE_DELAY_SECONDS, 60),
+    providerPriority: preferences?.provider_priority ?? config.providerPriority ?? "yandex",
+    enabledProviders: preferences?.enabled_providers?.length
+      ? preferences.enabled_providers
+      : config.enabledProviders?.length
+        ? config.enabledProviders
+        : DEFAULT_ENABLED_PROVIDERS,
+    max_scan_multiplier: preferences?.max_scan_multiplier ?? config.max_scan_multiplier ?? 5,
   }
 
   const handleChange = <K extends keyof RunConfig>(field: K, value: RunConfig[K]) => {
@@ -270,7 +282,7 @@ export function SearchForm({ onRun, isLoading }: SearchFormProps) {
 
       <div className="mt-auto flex shrink-0 flex-col items-center gap-3 border-t bg-white p-4">
         <div className="w-full rounded-md border bg-slate-50 px-2.5 py-1.5 text-center text-[11px] text-slate-600">
-          {queryCount} запросов к сбору{requestedQueryCount > queryCount ? ` из ${requestedQueryCount}` : ""}. Пауза {runConfig.requestDelaySeconds} сек.
+          {queryCount} запросов к сбору{requestedQueryCount > queryCount ? ` из ${requestedQueryCount}` : ""}. Источник: {runConfig.providerPriority === "2gis" ? "2GIS" : "Яндекс"}.
         </div>
         <Button
           size="lg"

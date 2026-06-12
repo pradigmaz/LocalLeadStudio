@@ -2,7 +2,7 @@ import { Button } from "@/components/ui/button"
 import { Sheet, SheetContent } from "@/components/ui/sheet"
 import { useCallback, useEffect, useState } from "react"
 import { toast } from "sonner"
-import { getApiErrorMessage, getErrorMessage } from "@/lib/api"
+import { getApiErrorMessage, getErrorMessage, JSON_ACTION_HEADERS, LOCAL_ACTION_HEADERS } from "@/lib/api"
 import type { Lead, LeadEvent, LeadStatus } from "@/types"
 import { LeadModalConfirmDialogs } from "./LeadModalConfirmDialogs"
 import { LeadModalHeader } from "./LeadModalHeader"
@@ -74,7 +74,7 @@ export function LeadModal({ lead, isOpen, onClose, onStatusChange, onPriorityCha
     try {
       const res = await fetch(`/api/leads/${lead.id}/events`, {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: JSON_ACTION_HEADERS,
         body: JSON.stringify({ comment })
       });
       if (res.ok) {
@@ -99,7 +99,7 @@ export function LeadModal({ lead, isOpen, onClose, onStatusChange, onPriorityCha
     try {
       const res = await fetch(`/api/leads/${lead.id}`, {
         method: 'DELETE',
-        headers: { 'X-LocalLead-Confirm': '1' }
+        headers: LOCAL_ACTION_HEADERS
       });
       if (res.ok) {
         toast.success("Лид удален из базы.");
@@ -133,7 +133,7 @@ export function LeadModal({ lead, isOpen, onClose, onStatusChange, onPriorityCha
   const handleOpenLeadFolder = async () => {
     setIsOpeningFolder(true);
     try {
-      const res = await fetch(`/api/leads/${lead.id}/open-folder`, { method: "POST" });
+      const res = await fetch(`/api/leads/${lead.id}/open-folder`, { method: "POST", headers: LOCAL_ACTION_HEADERS });
       const data: ApiError & { path?: string } = await res.json().catch(() => ({}));
       if (!res.ok) {
         toast.error(getApiErrorMessage(data, "Папка карточки не найдена"));

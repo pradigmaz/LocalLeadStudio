@@ -3,11 +3,18 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from 
 import { Button } from '@/components/ui/button'
 import { Settings } from 'lucide-react'
 import { SettingsSidebar, type SettingsTabId } from './SettingsSidebar'
+import type { ProviderPreferences } from '@/types'
 
 const BlacklistTab = lazy(() => import('./tabs/BlacklistTab').then(module => ({ default: module.BlacklistTab })))
+const SourcesTab = lazy(() => import('./tabs/SourcesTab').then(module => ({ default: module.SourcesTab })))
 const DatabaseTab = lazy(() => import('./tabs/DatabaseTab').then(module => ({ default: module.DatabaseTab })))
 
-export function SettingsDialog() {
+interface SettingsDialogProps {
+  preferences: ProviderPreferences | null
+  onPreferencesChange: (preferences: ProviderPreferences) => void
+}
+
+export function SettingsDialog({ preferences, onPreferencesChange }: SettingsDialogProps) {
   const [isOpen, setIsOpen] = useState(false)
   const [activeTab, setActiveTab] = useState<SettingsTabId>("blacklist")
 
@@ -37,6 +44,13 @@ export function SettingsDialog() {
           <div className="flex-1 min-w-0 flex flex-col overflow-hidden bg-white p-6 relative">
             <Suspense fallback={<div className="text-sm text-slate-500">Загрузка раздела...</div>}>
               {activeTab === 'blacklist' && <BlacklistTab />}
+              {activeTab === 'sources' && (
+                <SourcesTab
+                  key={JSON.stringify(preferences)}
+                  preferences={preferences}
+                  onPreferencesChange={onPreferencesChange}
+                />
+              )}
               {activeTab === 'database' && <DatabaseTab />}
             </Suspense>
           </div>

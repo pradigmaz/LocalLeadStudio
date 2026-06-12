@@ -4,7 +4,7 @@ import { Card, CardContent } from '@/components/ui/card'
 import { Download, Upload, AlertTriangle } from 'lucide-react'
 import { motion } from 'framer-motion'
 import { toast } from 'sonner'
-import { getApiErrorMessage, getErrorMessage, readJson } from '@/lib/api'
+import { getApiErrorMessage, getErrorMessage, LOCAL_ACTION_HEADERS, readJson } from '@/lib/api'
 import {
   AlertDialog,
   AlertDialogAction,
@@ -21,8 +21,6 @@ interface ApiError {
   error?: string;
   detail?: unknown;
 }
-
-const LOCAL_ACTION_HEADERS = { 'X-LocalLead-Confirm': '1' };
 
 export function DatabaseTab() {
   const [isCleaning, setIsCleaning] = useState(false)

@@ -44,6 +44,7 @@ export function ParsingStatus({ job, onCancel }: ParsingStatusProps) {
 
   const isStopping = job.status === "CANCEL_REQUESTED"
   const currentQuery = job.current_query?.trim() || "Подготовка запроса"
+  const providerLabel = job.current_provider === "2gis" ? "2GIS" : job.current_provider === "yandex" ? "Яндекс" : "Источник"
 
   const handleCancel = async () => {
     setIsCancelling(true)
@@ -58,36 +59,42 @@ export function ParsingStatus({ job, onCancel }: ParsingStatusProps) {
     <section
       role="status"
       aria-live="polite"
-      className="min-w-[460px] max-w-[720px] rounded-md border border-indigo-100 bg-white/90 px-3 py-2 text-slate-700 shadow-sm"
+      className="relative h-11 w-[420px] rounded-md border border-indigo-100 bg-white/95 px-2.5 py-1 text-slate-700 shadow-sm"
     >
-      <div className="flex items-center gap-3">
-        <div className="flex size-8 shrink-0 items-center justify-center rounded-md bg-indigo-50 text-indigo-600">
+      <div className="flex h-full min-w-0 items-center gap-2.5">
+        <div className="flex size-7 shrink-0 items-center justify-center rounded-md bg-indigo-50 text-indigo-600">
           {isStopping ? <Activity className="size-4" /> : <Loader2 className="size-4 animate-spin" />}
         </div>
 
-        <div className="min-w-0 flex-1">
-          <div className="flex items-center gap-2">
-            <span className="font-medium text-slate-900">
+        <div className="min-w-0 flex-1 leading-none">
+          <div className="flex min-w-0 items-center gap-2">
+            <span className="shrink-0 text-sm font-medium text-slate-900">
               {isStopping ? "Останавливаю сбор" : "Идет парсинг"}
             </span>
-            <Badge variant="outline" className="rounded-md border-indigo-100 bg-indigo-50 text-indigo-700">
+            <Badge variant="outline" className="h-5 shrink-0 rounded-md border-indigo-100 bg-indigo-50 px-1.5 text-[11px] text-indigo-700">
               {job.query_index || 0}/{job.query_total || 0}
             </Badge>
-            <span className="flex items-center gap-1 text-xs text-slate-500">
+            <span className="flex shrink-0 items-center gap-1 text-[11px] text-slate-500">
               <Clock3 className="size-3" />
               {formatDuration(elapsedSeconds)}
             </span>
+            <span className="truncate text-xs text-slate-500">{currentQuery}</span>
           </div>
-          <div className="mt-1 truncate text-xs text-slate-500">{currentQuery}</div>
-          <div className="mt-2 h-1.5 overflow-hidden rounded-full bg-slate-100">
-            <div
-              className="h-full rounded-full bg-indigo-500 transition-all duration-500 ease-[cubic-bezier(0.32,0.72,0,1)]"
-              style={{ width: `${progress}%` }}
-            />
+          <div className="mt-1 flex min-w-0 items-center gap-2 overflow-hidden whitespace-nowrap text-[10px] text-slate-500">
+            <span>{providerLabel} {job.provider_index || 0}/{job.provider_total || 0}</span>
+            <span>прсм. {job.scan_count || 0}</span>
+            <span>созд. {job.created_count || 0}</span>
+            <span>доп. {job.enriched_count || 0}</span>
+            <span>без изм. {job.existing_count || 0}</span>
           </div>
+          {job.blocked_source && (
+            <div className="mt-0.5 truncate text-[10px] font-medium text-amber-700">
+              Блокировка источника: {job.blocked_source === "2gis" ? "2GIS" : job.blocked_source}
+            </div>
+          )}
         </div>
 
-        <div className="grid grid-cols-2 gap-x-3 gap-y-1 text-right text-[11px] leading-4 text-slate-500">
+        <div className="grid shrink-0 grid-cols-2 gap-x-2 gap-y-0.5 text-right text-[10px] leading-3 text-slate-500">
           <span>сохр. {job.saved_count || 0}</span>
           <span>проп. {job.skipped_count || 0}</span>
           <span>дубли {job.duplicate_count || 0}</span>
@@ -102,10 +109,16 @@ export function ParsingStatus({ job, onCancel }: ParsingStatusProps) {
           aria-label="Остановить сбор"
           onClick={handleCancel}
           disabled={isStopping || isCancelling}
-          className="text-slate-500 hover:text-red-600"
+          className="size-7 shrink-0 text-slate-500 hover:text-red-600"
         >
           <XCircle className="size-4" />
         </Button>
+      </div>
+      <div className="absolute inset-x-2 bottom-1 h-1 overflow-hidden rounded-full bg-slate-100">
+        <div
+          className="h-full rounded-full bg-indigo-500 transition-all duration-500 ease-[cubic-bezier(0.32,0.72,0,1)]"
+          style={{ width: `${progress}%` }}
+        />
       </div>
     </section>
   )
