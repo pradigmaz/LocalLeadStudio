@@ -51,6 +51,7 @@ CREATE TABLE IF NOT EXISTS leads (
     next_action TEXT,
     offer_type TEXT,
     assigned_to TEXT,
+    viewed_at TIMESTAMP,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     FOREIGN KEY (organization_id) REFERENCES organizations (id) ON DELETE CASCADE
@@ -138,11 +139,13 @@ class SQLiteRepo:
         self.db_path.parent.mkdir(parents=True, exist_ok=True)
         with self.get_connection() as conn:
             conn.executescript(SCHEMA)
-            # Safe migration: add photos_json if it doesn't exist
-            try:
-                conn.execute("ALTER TABLE organizations ADD COLUMN photos_json TEXT")
-            except sqlite3.OperationalError:
-                pass
+            self._add_column_if_missing(conn, "organizations", "photos_json", "TEXT")
+            self._add_column_if_missing(conn, "leads", "viewed_at", "TIMESTAMP")
+
+    def _add_column_if_missing(self, conn: sqlite3.Connection, table: str, column: str, definition: str) -> None:
+        columns = {row["name"] for row in conn.execute(f"PRAGMA table_info({table})").fetchall()}
+        if column not in columns:
+            conn.execute(f"ALTER TABLE {table} ADD COLUMN {column} {definition}")
 
     def upsert_organization(self, org_data: Dict[str, Any]) -> Tuple[str, bool]:
         """
@@ -236,6 +239,25 @@ class SQLiteRepo:
                 (str(uuid.uuid4()), lead_id, "STATUS_CHANGE", old_status, status, comment)
             )
 
+    def get_lead_status(self, lead_id: str) -> Optional[str]:
+        with self.get_connection() as conn:
+            row = conn.execute("SELECT lead_status FROM leads WHERE id = ?", (lead_id,)).fetchone()
+            return row["lead_status"] if row else None
+
+    def mark_lead_viewed(self, lead_id: str) -> Optional[str]:
+        with self.get_connection() as conn:
+            row = conn.execute("SELECT viewed_at FROM leads WHERE id = ?", (lead_id,)).fetchone()
+            if not row:
+                return None
+            if row["viewed_at"]:
+                return row["viewed_at"]
+            conn.execute(
+                "UPDATE leads SET viewed_at = CURRENT_TIMESTAMP, updated_at = CURRENT_TIMESTAMP WHERE id = ?",
+                (lead_id,),
+            )
+            viewed_row = conn.execute("SELECT viewed_at FROM leads WHERE id = ?", (lead_id,)).fetchone()
+            return viewed_row["viewed_at"] if viewed_row else None
+
     def create_run(self, run_data: Dict[str, Any]) -> str:
         import uuid
         run_id = str(uuid.uuid4())
@@ -253,9 +275,9 @@ class SQLiteRepo:
         with self.get_connection() as conn:
             conn.execute(f"UPDATE runs SET {set_clause} WHERE id = ?", values)
 
-    def finish_run(self, run_id: str):
+    def finish_run(self, run_id: str, status: str = "FINISHED"):
         with self.get_connection() as conn:
-            conn.execute("UPDATE runs SET status = 'FINISHED', finished_at = CURRENT_TIMESTAMP WHERE id = ?", (run_id,))
+            conn.execute("UPDATE runs SET status = ?, finished_at = CURRENT_TIMESTAMP WHERE id = ?", (status, run_id))
 
     def add_run_result(self, run_id: str, org_id: str, query: str, result_status: str, skip_reason: str = "", was_new: bool = False, was_updated: bool = False):
         with self.get_connection() as conn:
@@ -266,7 +288,7 @@ class SQLiteRepo:
             
     def get_all_leads_view(self) -> List[Dict[str, Any]]:
         query = """
-        SELECT l.id as id, l.lead_type, l.lead_status, l.contact_status, l.priority, l.score, l.reason,
+        SELECT l.id as id, l.lead_type, l.lead_status, l.contact_status, l.priority, l.score, l.reason, l.viewed_at,
                o.source_org_id, o.name, o.category, o.address, o.city, o.rating, o.review_count, 
                o.websites_json, o.phones_json, o.socials_json, o.source_url, o.data_folder, o.photos_json
         FROM leads l
