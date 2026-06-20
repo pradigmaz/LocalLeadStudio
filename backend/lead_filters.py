@@ -205,7 +205,9 @@ def keep_lead(lead: dict, config: dict, chain_words: list[str]) -> tuple[bool, s
         return False, "село/деревня вне целевого города"
     if is_excluded_popular_place(lead):
         return False, "популярное место города"
-    if is_high_profile_redesign(lead):
+    # При охоте на редизайн (keepSitesForRedesign) популярные места с сайтом — целевые лиды,
+    # а не мусор: не режем их, пусть идут вниз списка как REDESIGN.
+    if not config.get("keepSitesForRedesign", False) and is_high_profile_redesign(lead):
         return False, "слишком популярное место для редизайна"
     min_reviews = int(config.get("minReviews") or 0)
     if int(float(lead["review_count"] or 0)) < min_reviews:
