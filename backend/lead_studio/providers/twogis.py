@@ -14,6 +14,11 @@ from urllib.parse import quote, urlparse
 
 from .base import ProviderBlockedError, ProviderCandidate
 
+try:
+    from playwright.sync_api import TimeoutError as PlaywrightTimeoutError
+except ImportError:  # playwright отсутствует — таймаут-ветка недостижима (сначала except ImportError)
+    PlaywrightTimeoutError = ()
+
 
 DETAIL_ENRICH_LIMIT = 10
 SOCIAL_OR_BOOKING_HOSTS = {
@@ -22,7 +27,15 @@ SOCIAL_OR_BOOKING_HOSTS = {
     "dikidi.ru",
     "prodoctorov.ru",
     "zoon.ru",
+    "flamp.ru",
     "vk.com",
+    "vk.ru",
+    "ok.ru",
+    "instagram.com",
+    "pinterest.com",
+    "taplink.cc",
+    "max.ru",
+    "dzen.ru",
     "t.me",
     "telegram.org",
     "wa.me",
@@ -30,6 +43,9 @@ SOCIAL_OR_BOOKING_HOSTS = {
     "youtube.com",
     "youtu.be",
 }
+
+# URL'ы-ассеты (картинки/стили/медиа) — не сайты бизнеса, режем.
+_ASSET_URL_RE = re.compile(r"\.(?:png|jpe?g|gif|webp|svg|ico|css|mp4|m4v|woff2?|ttf)(?:\?|$)", re.I)
 
 CITY_SLUGS = {
     "воронеж": "voronezh",
@@ -83,17 +99,9 @@ class TwogisBrowserBackend:
         except ImportError:
             html = self._dump_dom(query, cancel_event=cancel_event)
             return {"html": html, "cards": self.extract_cards(html)}
-        except Exception as exc:
-            if exc.__class__.__name__ != "TimeoutError":
-                raise
+        except PlaywrightTimeoutError:
             html = self._dump_dom(query, cancel_event=cancel_event)
             return {"html": html, "cards": self.extract_cards(html)}
-
-    def open_search(self, query: str) -> str:
-        return str(self.open_search_state(query).get("html") or "")
-
-    def scroll_results(self) -> None:
-        return None
 
     def extract_cards(self, html: str) -> list[dict[str, str]]:
         parser = _TextCardParser()
@@ -112,9 +120,7 @@ class TwogisBrowserBackend:
             return str(self._state_with_playwright(url, id_or_url, write_artifacts=False, cancel_event=cancel_event).get("html") or "")
         except ImportError:
             return self._dump_url(url, cancel_event=cancel_event)
-        except Exception as exc:
-            if exc.__class__.__name__ != "TimeoutError":
-                raise
+        except PlaywrightTimeoutError:
             return self._dump_url(url, cancel_event=cancel_event)
 
     def extract_details(self, html: str) -> dict[str, object]:
@@ -126,10 +132,12 @@ class TwogisBrowserBackend:
 
     @staticmethod
     def _external_site(url: str) -> str:
-        clean = url.rstrip("\\),.;")
+        # обрезать HTML-сущности/мусор-хвосты (`...jpg&quot;`, кавычки) до чистого URL
+        clean = re.split(r'["\'<>]|&quot|&amp', url, 1)[0].rstrip("\\),.;")
         lowered = clean.lower()
         internal_hosts = [
             "2gis.", "d-assets.", "api.2gis", "maps.2gis", "tile", "photo.2gis",
+            "cdnvideo.", "cdn1.flamp", "2gis_stories",
             "yandex.", "mail.ru", "rambler.", "sberbank.", "sber.", "top100",
             "tns-counter", "google", "doubleclick", "clickstream", "visor.",
             "w3.org", "serving-sys", "schema.org", "cdnjs.", "cloudflare.",
@@ -137,6 +145,8 @@ class TwogisBrowserBackend:
             "facebook.com/tr", "russpass.",
         ]
         if any(host in lowered for host in internal_hosts) or lowered.endswith(".js") or "${" in clean or "`" in clean:
+            return ""
+        if _ASSET_URL_RE.search(lowered):  # прямые картинки/стили/медиа — не сайт
             return ""
         return clean
 
@@ -255,13 +265,22 @@ class TwogisBrowserBackend:
                 "--dump-dom",
                 url,
             ]
-            process = subprocess.Popen(command, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
-            while process.poll() is None:
+            # encoding=utf-8: иначе Windows-локаль (cp1251/cp866) ломает кириллицу в именах.
+            process = subprocess.Popen(
+                command, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
+                text=True, encoding="utf-8", errors="replace",
+            )
+            # communicate() дренирует pipe (иначе DOM > буфера → chrome виснет на записи = дедлок).
+            while True:
                 if cancel_event and cancel_event.is_set():
-                    process.terminate()
+                    process.kill()
+                    process.communicate()
                     raise RuntimeError("cancelled")
-                time.sleep(0.25)
-            stdout, stderr = process.communicate(timeout=2)
+                try:
+                    stdout, stderr = process.communicate(timeout=0.5)
+                    break
+                except subprocess.TimeoutExpired:
+                    continue
             return stdout or stderr
         finally:
             time.sleep(0.1)
@@ -342,13 +361,6 @@ class TwogisBrowserBackend:
                 "chrome.exe",
                 "chrome",
             ],
-            "chromium": [
-                r"%ProgramFiles%\Chromium\Application\chrome.exe",
-                r"%ProgramFiles(x86)%\Chromium\Application\chrome.exe",
-                r"%LOCALAPPDATA%\Chromium\Application\chrome.exe",
-                "chromium.exe",
-                "chromium",
-            ],
             "edge": [
                 r"%ProgramFiles%\Microsoft\Edge\Application\msedge.exe",
                 r"%ProgramFiles(x86)%\Microsoft\Edge\Application\msedge.exe",
@@ -398,7 +410,7 @@ class TwogisBrowserBackend:
             ],
         }
         order = [
-            "chrome", "chromium", "edge", "yandex", "opera", "opera_gx", "brave", "vivaldi", "firefox", "safari"
+            "chrome", "edge", "yandex", "opera", "opera_gx", "brave", "vivaldi", "firefox", "safari"
         ]
         candidates = candidates_by_browser.get(browser, []) if browser != "auto" else [
             path for key in order for path in candidates_by_browser[key]
