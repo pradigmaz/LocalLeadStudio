@@ -44,11 +44,27 @@ def first_value(row: dict[str, str], *keys: str) -> str:
     return ""
 
 
+def normalize_coords(coords: list, row_value: str) -> list[float]:
+    if coords:
+        return coords
+    parts = re.split(r"[,;\s]+", row_value.strip())
+    result = []
+    for part in parts:
+        try:
+            result.append(float(part.replace(",", ".")))
+        except ValueError:
+            continue
+    return result
+
+
 def extract_state(html: str) -> dict[str, Any]:
     for match in re.finditer(r"<script[^>]*>(.*?)</script>", html, flags=re.S):
         value = match.group(1).strip()
         if value.startswith("{") and '"stack"' in value and '"config"' in value:
-            return json.loads(value)
+            try:
+                return json.loads(value)
+            except json.JSONDecodeError:
+                continue
     raise ValueError("Yandex state JSON not found")
 
 
@@ -141,8 +157,18 @@ def links_from_item(item: dict[str, Any], row: dict[str, str]) -> tuple[list[str
 
 
 def row_reviews(reviews: list[dict[str, str]], org_id: str, limit: int) -> list[dict[str, str]]:
+    def review_date_key(item: dict[str, str]) -> tuple[int, int, int]:
+        parts = first_value(item, "Дата обновления").split(".")
+        if len(parts) == 3:
+            try:
+                day, month, year = (int(p) for p in parts)
+                return (year, month, day)
+            except ValueError:
+                pass
+        return (-1, -1, -1)
+
     matched = [review for review in reviews if first_value(review, "ID бизнеса") == org_id]
-    matched.sort(key=lambda item: first_value(item, "Дата обновления"), reverse=True)
+    matched.sort(key=review_date_key, reverse=True)
     return [
         {
             "rating": first_value(review, "Оценка"),
@@ -192,7 +218,7 @@ def enrich_row(
         "address": text(item.get("address")) or first_value(row, "Адрес"),
         "city": first_value(row, "Город"),
         "region": first_value(row, "Регион"),
-        "coordinates": coords or first_value(row, "Координаты", "Широта"),
+        "coordinates": normalize_coords(coords, first_value(row, "Координаты", "Широта")),
         "rating": rating.get("ratingValue") or first_value(row, "Рейтинг"),
         "rating_count": rating.get("ratingCount") or first_value(row, "Оценок", "Кол-во оценок"),
         "review_count": rating.get("reviewCount") or first_value(row, "Отзывов", "Кол-во отзывов"),
