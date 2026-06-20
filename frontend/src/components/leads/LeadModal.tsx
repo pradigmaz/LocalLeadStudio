@@ -2,7 +2,7 @@ import { Button } from "@/components/ui/button"
 import { Sheet, SheetContent } from "@/components/ui/sheet"
 import { useCallback, useEffect, useState } from "react"
 import { toast } from "sonner"
-import { getApiErrorMessage, getErrorMessage, JSON_ACTION_HEADERS, LOCAL_ACTION_HEADERS } from "@/lib/api"
+import { getApiErrorMessage, getErrorMessage, JSON_ACTION_HEADERS, LOCAL_ACTION_HEADERS, readJson } from "@/lib/api"
 import type { Lead, LeadEvent, LeadStatus } from "@/types"
 import { LeadModalConfirmDialogs } from "./LeadModalConfirmDialogs"
 import { LeadModalHeader } from "./LeadModalHeader"
@@ -41,7 +41,7 @@ export function LeadModal({ lead, isOpen, onClose, onStatusChange, onPriorityCha
     setIsLoadingEvents(true);
     try {
       const res = await fetch(`/api/leads/${leadId}/events`);
-      const data = await res.json();
+      const data = await readJson<{ events?: LeadEvent[] }>(res);
       if (!isCancelled()) setEvents(data.events || []);
     } catch (error) {
       if (!isCancelled()) console.error("Failed to load lead events", error);

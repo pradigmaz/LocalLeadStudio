@@ -47,16 +47,19 @@ function App() {
   }, []);
 
   useEffect(() => {
-    fetch('/api/leads')
-      .then(res => readJson<LeadsResponse>(res))
-      .then((data) => {
-        if (data.leads && data.leads.length > 0) {
-          setLeads(data.leads);
+    const loadInitialLeads = async () => {
+      try {
+        const nextLeads = await loadLeads();
+        if (nextLeads.length > 0) {
           setViewState('RESULTS');
         }
-      })
-      .catch(err => console.error("Failed to fetch initial leads:", err));
-  }, [loadLeads]);
+      } catch (err) {
+        console.error("Failed to fetch initial leads:", err);
+      }
+    };
+
+    void loadInitialLeads();
+  }, []);
 
   useEffect(() => {
     fetch('/api/settings/preferences')
@@ -164,7 +167,7 @@ function App() {
     const previousLeads = [...leads];
     const previousSelectedLead = selectedLead;
 
-    setLeads(leads.map(l => l.id === leadId ? { ...l, lead_status: newStatus } : l));
+    setLeads(current => current.map(l => l.id === leadId ? { ...l, lead_status: newStatus } : l));
     if (selectedLead && selectedLead.id === leadId) {
       setSelectedLead({ ...selectedLead, lead_status: newStatus });
     }
@@ -214,7 +217,7 @@ function App() {
     const previousLeads = [...leads];
     const previousSelectedLead = selectedLead;
 
-    setLeads(leads.map(l => l.id === leadId ? { ...l, priority } : l));
+    setLeads(current => current.map(l => l.id === leadId ? { ...l, priority } : l));
     if (selectedLead && selectedLead.id === leadId) {
       setSelectedLead({ ...selectedLead, priority });
     }

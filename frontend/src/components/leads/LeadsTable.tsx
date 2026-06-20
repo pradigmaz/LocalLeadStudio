@@ -1,4 +1,4 @@
-import { useState } from "react"
+import { useMemo, useState } from "react"
 import { Badge } from "@/components/ui/badge"
 import { Input } from "@/components/ui/input"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
@@ -24,7 +24,53 @@ export function LeadsTable({ leads, onLeadClick }: LeadsTableProps) {
   const [cityFilter, setCityFilter] = useState<string>("ALL");
   const [reviewFilter, setReviewFilter] = useState<string>("ALL");
 
-  const uniqueCities = Array.from(new Set(leads.map(l => l.city).filter(Boolean))).sort();
+  const uniqueCities = useMemo(
+    () => Array.from(new Set(leads.map(l => l.city).filter(Boolean))).sort(),
+    [leads]
+  );
+
+  // Filter logic
+  const filteredLeads = useMemo(() => leads.filter(lead => {
+    const matchesSearch =
+      lead.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      (lead.address || "").toLowerCase().includes(searchTerm.toLowerCase()) ||
+      (lead.category || "").toLowerCase().includes(searchTerm.toLowerCase());
+
+    const matchesStatus = statusFilter === "ALL" || lead.lead_status === statusFilter;
+
+    const matchesType = typeFilter === "ALL" || lead.lead_type === typeFilter;
+
+    const matchesCity = cityFilter === "ALL" || lead.city === cityFilter;
+
+    let matchesReviews = true;
+    const revCount = lead.review_count || 0;
+    if (reviewFilter === "0-10") matchesReviews = revCount <= 10;
+    else if (reviewFilter === "10-50") matchesReviews = revCount > 10 && revCount <= 50;
+    else if (reviewFilter === "50-100") matchesReviews = revCount > 50 && revCount <= 100;
+    else if (reviewFilter === "100+") matchesReviews = revCount > 100;
+
+    return matchesSearch && matchesStatus && matchesType && matchesCity && matchesReviews;
+  }), [leads, searchTerm, statusFilter, typeFilter, cityFilter, reviewFilter]);
+
+  const sortedLeads = useMemo(() => [...filteredLeads].sort((a, b) => {
+    // 1. Priority
+    const priorityA = a.priority || 0;
+    const priorityB = b.priority || 0;
+    if (priorityA !== priorityB) {
+      if (priorityA === 0) return 1;
+      if (priorityB === 0) return -1;
+      return priorityA - priorityB;
+    }
+
+    // 2. Type: NEW_SITE first
+    if (a.lead_type !== b.lead_type) {
+      if (a.lead_type === 'NEW_SITE') return -1;
+      if (b.lead_type === 'NEW_SITE') return 1;
+    }
+
+    // 3. Date (newest first, assuming id is timestamp-based or just fallback)
+    return 0; // We don't have created_at in Lead type!
+  }), [filteredLeads]);
 
   if (leads.length === 0) {
     return (
@@ -61,49 +107,6 @@ export function LeadsTable({ leads, onLeadClick }: LeadsTableProps) {
   }
 
   const isViewedNewLead = (lead: Lead) => lead.lead_status === 'NEW' && Boolean(lead.viewed_at);
-
-  // Filter logic
-  const filteredLeads = leads.filter(lead => {
-    const matchesSearch = 
-      lead.name.toLowerCase().includes(searchTerm.toLowerCase()) || 
-      (lead.address || "").toLowerCase().includes(searchTerm.toLowerCase()) ||
-      (lead.category || "").toLowerCase().includes(searchTerm.toLowerCase());
-    
-    const matchesStatus = statusFilter === "ALL" || lead.lead_status === statusFilter;
-    
-    const matchesType = typeFilter === "ALL" || lead.lead_type === typeFilter;
-    
-    const matchesCity = cityFilter === "ALL" || lead.city === cityFilter;
-    
-    let matchesReviews = true;
-    const revCount = lead.review_count || 0;
-    if (reviewFilter === "0-10") matchesReviews = revCount <= 10;
-    else if (reviewFilter === "10-50") matchesReviews = revCount > 10 && revCount <= 50;
-    else if (reviewFilter === "50-100") matchesReviews = revCount > 50 && revCount <= 100;
-    else if (reviewFilter === "100+") matchesReviews = revCount > 100;
-    
-    return matchesSearch && matchesStatus && matchesType && matchesCity && matchesReviews;
-  });
-
-  const sortedLeads = [...filteredLeads].sort((a, b) => {
-    // 1. Priority
-    const priorityA = a.priority || 0;
-    const priorityB = b.priority || 0;
-    if (priorityA !== priorityB) {
-      if (priorityA === 0) return 1;
-      if (priorityB === 0) return -1;
-      return priorityA - priorityB;
-    }
-    
-    // 2. Type: NEW_SITE first
-    if (a.lead_type !== b.lead_type) {
-      if (a.lead_type === 'NEW_SITE') return -1;
-      if (b.lead_type === 'NEW_SITE') return 1;
-    }
-
-    // 3. Date (newest first, assuming id is timestamp-based or just fallback)
-    return 0; // We don't have created_at in Lead type!
-  });
 
   return (
     <div className="p-1.5 rounded-[2rem] bg-slate-50/50 border border-slate-200/50 shadow-sm flex flex-col">
