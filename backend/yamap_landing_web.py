@@ -12,6 +12,8 @@ import uvicorn
 
 from core import (
     DATA_DIR,
+    BUNDLE_DIR,
+    FROZEN,
     LOCAL_CORS_ORIGINS,
     MAX_QUERY_LINES,
     DEFAULT_YANDEX_DELAY_SECONDS,
@@ -347,14 +349,29 @@ def delete_lead(lead_id: str, request: FastAPIRequest):
     return {"success": True, "deleted_folders": deleted_folders}
 
 
+# Отдаём собранный фронт с того же origin, что и API — для Electron/прод.
+# frozen: dist бандлится в BUNDLE_DIR/frontend_dist; dev: frontend/dist, может отсутствовать.
+_FRONTEND_DIST = (BUNDLE_DIR / "frontend_dist") if FROZEN else (Path(__file__).resolve().parent.parent / "frontend" / "dist")
+if _FRONTEND_DIST.is_dir():
+    from fastapi.staticfiles import StaticFiles
+    app.mount("/", StaticFiles(directory=str(_FRONTEND_DIST), html=True), name="ui")
+
+
 def main() -> int:
+    # PyInstaller windowed (console=False): sys.stdout/stderr == None -> print/uvicorn-логи падают.
+    # Подменяем заглушкой, чтобы окно консоли не нужно было вовсе.
+    import io
+    if sys.stdout is None:
+        sys.stdout = io.StringIO()
+    if sys.stderr is None:
+        sys.stderr = io.StringIO()
     import argparse
     parser = argparse.ArgumentParser()
     parser.add_argument("--host", default="127.0.0.1")
     parser.add_argument("--port", type=int, default=8765)
     args = parser.parse_args()
     print(f"Starting FastAPI server on http://{args.host}:{args.port}")
-    uvicorn.run("yamap_landing_web:app", host=args.host, port=args.port, reload=False)
+    uvicorn.run(app, host=args.host, port=args.port, reload=False)
     return 0
 
 

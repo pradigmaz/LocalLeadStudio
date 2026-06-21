@@ -1,0 +1,24 @@
+{
+  "name": "local-lead-studio-desktop",
+  "version": "0.1.0",
+  "description": "Electron-обёртка для Local Lead Studio (окно на локальный FastAPI+UI)",
+  "main": "main.js",
+  "scripts": {
+    "start": "electron .",
+    "check": "node selfcheck.js",
+    "dist": "electron-builder --win portable"
+  },
+  "devDependencies": {
+    "electron": "^33.0.0",
+    "electron-builder": "^25.0.0"
+  },
+  "build": {
+    "appId": "tech.localleadstudio.desktop",
+    "productName": "Local Lead Studio",
+    "files": ["main.js", "wait-port.js"],
+    "extraResources": [
+      { "from": "../backend/dist/lls-backend", "to": "lls-backend" }
+    ],
+    "win": { "target": "portable" }
+  }
+}

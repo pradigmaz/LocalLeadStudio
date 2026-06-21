@@ -1,5 +1,6 @@
 from __future__ import annotations
 import json
+import os
 import re
 import sqlite3
 import sys
@@ -7,7 +8,6 @@ import time
 from pathlib import Path
 from threading import Event
 from functools import lru_cache
-from typing import Optional
 
 from fastapi import HTTPException, Request as FastAPIRequest
 
@@ -16,9 +16,20 @@ from lead_studio.adapters.sqlite_repo import SQLiteRepo
 
 ROOT = Path(__file__).parent.resolve()
 PROJECT_ROOT = ROOT.parent
-DATA_DIR = PROJECT_ROOT / "lead_studio_data"
 LEGACY_DATA_DIR = ROOT / "lead_studio_data"
-CONFIG_PATH = PROJECT_ROOT / "config.json"
+# Frozen (PyInstaller): read-only ассеты из бандла. Данные — рядом с .exe
+# (или путь из LLS_DATA_DIR, который задаёт лаунчер/Electron).
+FROZEN = getattr(sys, "frozen", False)
+_DATA_OVERRIDE = os.environ.get("LLS_DATA_DIR")
+if FROZEN:
+    BUNDLE_DIR = Path(getattr(sys, "_MEIPASS", ROOT))
+    DATA_DIR = Path(_DATA_OVERRIDE) if _DATA_OVERRIDE else Path(sys.executable).parent / "lead_studio_data"
+    CONFIG_PATH = BUNDLE_DIR / "config.json"
+else:
+    BUNDLE_DIR = ROOT
+    DATA_DIR = Path(_DATA_OVERRIDE) if _DATA_OVERRIDE else PROJECT_ROOT / "lead_studio_data"
+    CONFIG_PATH = PROJECT_ROOT / "config.json"
+DATA_DIR.mkdir(parents=True, exist_ok=True)
 YANDEX_GUARD_PATH = DATA_DIR / "yandex_request_guard.json"
 LOCAL_CLIENT_HOSTS = {"127.0.0.1", "::1", "localhost"}
 LOCAL_CORS_ORIGINS = ["http://127.0.0.1:5173", "http://localhost:5173"]
@@ -106,6 +117,8 @@ def get_db_repo() -> SQLiteRepo:
 
 
 def data_file(name: str) -> Path:
+    if FROZEN:
+        return BUNDLE_DIR / name
     path = DATA_DIR / name
     return path if path.exists() else LEGACY_DATA_DIR / name
 

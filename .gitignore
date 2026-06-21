@@ -29,3 +29,8 @@ dist/
 # IDE
 .idea/
 .vscode/
+
+# PyInstaller / build artifacts
+/backend/build/
+/electron/dist/
+*.spec.bak
