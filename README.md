@@ -1,120 +1,129 @@
-# Local Lead Studio
+<div align="center">
 
-Локальный инструмент для поиска клиентов в Яндекс.Картах.
+# 🎯 Local Lead Studio
 
-Идея простая: собрать организации по городам и нишам, быстро убрать сетевиков/мусор, сохранить карточки и руками довести нормальные лиды до статуса.
+**Поиск клиентов для техспеца: карточки бизнесов из Яндекс.Карт и 2GIS → чистая база лидов → готовность к сделке.**
 
-## Быстрый запуск
+![Platform](https://img.shields.io/badge/platform-Windows%20x64-0078D6?logo=windows)
+![Python](https://img.shields.io/badge/Python-3.x-3776AB?logo=python&logoColor=white)
+![React](https://img.shields.io/badge/React-19-61DAFB?logo=react&logoColor=black)
+![Electron](https://img.shields.io/badge/Electron-33-47848F?logo=electron&logoColor=white)
+![Status](https://img.shields.io/badge/mode-local%20only-success)
+
+</div>
+
+---
+
+Приоритет — бизнесы **без сайта** (кандидаты на новый сайт). Те, у кого сайт есть, можно собирать отдельно как редизайн. Работает локально, на одной машине. Не публичный сервис.
+
+## ✨ Возможности
+
+- 🔎 Поиск по городам и нишам — **Яндекс.Карты** + **2GIS**.
+- 🧹 Фильтры: сетевики, мин. отзывы, наличие фото, «есть сайт / нет сайта».
+- ♻️ Дедупликация: повторный сбор не плодит дубли и не сбивает ручной статус.
+- 🗂 Карточка лида: телефоны, сайты, соцсети, фото, история, папка с данными.
+- 📊 Скоринг и статусы: `NEW → POTENTIAL → IN_PROGRESS → PROCESSED` (+ `REJECT` / `CHAIN`).
+- ⚡ Аудит сайта без браузера — `scripts/site_audit.py` (Google PageSpeed / Lighthouse).
+- 🖥 Портативная десктоп-версия (Electron) — Python на машине не нужен.
+
+## 🚀 Быстрый старт
+
+### Портативная версия (без установки)
+
+Готовый `.exe` ничего не ставит в систему и не требует Python:
+
+```text
+electron/dist/Local Lead Studio 0.1.0.exe   ← двойной клик
+```
+
+> Данные хранятся рядом с `.exe` — в папке `lead_studio_data`.
+
+### Из исходников (без сборки)
+
+> Требуется **Python 3.x** и **Node.js**. `run.bat` сам поставит зависимости при первом запуске и откроет браузер.
 
 ```cmd
-cd /d D:\всё по техничке\LocalLeadStudio
-python -m pip install -r backend\requirements.txt
-cd frontend
-npm install
-cd ..
 run.bat
 ```
 
-Открыть:
+Данные пишутся рядом — в `LocalLeadStudio\lead_studio_data`.
 
-```text
-http://localhost:5173/
-```
+| Сервис   | Адрес                        |
+| :------- | :--------------------------- |
+| 🖼 UI     | `http://localhost:5173`      |
+| 🔌 API    | `http://127.0.0.1:8765`      |
+| 📖 Docs   | `http://127.0.0.1:8765/docs` |
 
-Что поднимается:
+## 📖 Как пользоваться
 
-- UI: `http://localhost:5173/`
-- API: `http://127.0.0.1:8765/`
-- API docs: `http://127.0.0.1:8765/docs`
+1. Слева задай регион, город и ниши (или ручной список запросов).
+2. Проверь лимиты: число карточек, паузу, мин. отзывов, фото.
+3. Запусти сбор, следи за статусом.
+4. Разбери таблицу лидов; в карточке — контакты, фото, история, папка.
+5. Помечай статусы вручную — повторный сбор их не откатит.
 
-## Как работать
-
-1. Собери запросы в левой панели: регионы, города, ниши или ручной список.
-2. Проверь лимиты: сколько организаций брать, пауза между запросами, минимум отзывов, фото.
-3. Запусти сбор.
-4. Следи за статусом job.
-5. Разбери таблицу лидов:
-   - `NEW` — новый;
-   - `POTENTIAL` — годный;
-   - `IN_PROGRESS` — в работе;
-   - `PROCESSED` — отработан;
-   - `REJECT`, `JUNK`, `CHAIN` — мусор, неликвид, сетевик.
-6. В карточке лида смотри сайты, телефоны, соцсети, фото, историю и папку с данными.
-
-## Что делает фильтр
-
-Парсер не просто складывает всё подряд. Он помечает или пропускает:
-
-- сетевиков по словам и доменам из `config.json`;
-- организации без фото, если включён `requirePhotos`;
-- точки с малым числом отзывов;
-- слишком популярные рестораны/кафе/бары;
-- мелкие населённые пункты;
-- организации вне выбранного города;
-- дубли внутри одного запуска.
-
-Важное правило: повторный сбор не должен сбивать ручной статус. Если лид уже `POTENTIAL` или `IN_PROGRESS`, авторазметка его не откатывает.
-
-## Где лежат данные
-
-```text
-lead_studio_data/app.db      SQLite база
-lead_studio_data/runs/       результаты запусков и папки карточек
-config.json                  правила парсера, сетевики, пороги, категории
-```
-
-`lead_studio_data/` не коммитится.
-
-## Структура проекта
+## 🗃 Структура проекта
 
 ```text
 backend/
-  yamap_landing_web.py              FastAPI, API, запуск парсера
-  yamap_landing_parser.py           извлечение данных из Яндекс.Карт
-  lead_studio/adapters/sqlite_repo.py
-  lead_studio/job_manager.py
-
-frontend/src/
-  components/search/                конструктор поиска и статус сбора
-  components/leads/                 таблица и карточка лида
-  components/settings/              база, blacklist, presets
-  lib/
-  types/
+  yamap_landing_web.py     точка входа FastAPI (app, роуты, main)
+  core.py                  пути, конфиг, репозиторий, общие хелперы
+  guards.py                локальная защита + лимиты Яндекса
+  folders.py               папки лидов
+  cities.py                справочник городов/регионов
+  leads.py                 извлечение и сохранение лида
+  lead_filters.py          фильтры отбора (keep_lead, is_chain, гео)
+  lead_pipeline.py         оркестрация сбора, провайдеры, job
+  yamap_landing_parser.py  парсер Яндекс.Карт
+  lead_studio/             SQLite-репозиторий, провайдеры (yandex, 2gis)
+frontend/                  React + Vite + Tailwind + shadcn
+electron/                  десктоп-обёртка (окно над локальным сервером)
+scripts/site_audit.py      аудит сайта без браузера (PageSpeed)
 ```
 
-## Разработка
+## 🌐 Источники и браузеры
 
-Frontend:
+| Источник | Как работает | Требования |
+| :------- | :----------- | :--------- |
+| **Яндекс.Карты** | парсинг публичной страницы (не API), самолимит ~80/день + паузы | — |
+| **2GIS** | через установленный браузер | Chrome / Edge / Яндекс / Opera / Brave / Vivaldi / Firefox |
+
+> Без браузера 2GIS не работает; Яндекс работает всегда.
+
+## 📦 Сборка портативной версии
+
+Нужны Python, Node и `pyinstaller` (`pip install pyinstaller`):
 
 ```cmd
-cd frontend
-npx tsc -p tsconfig.app.json --noEmit
-npm run lint
-npm run build
+:: 1. backend → self-contained exe
+cd backend && python -m PyInstaller --noconfirm --clean lls-backend.spec && cd ..
+:: 2. фронт
+cd frontend && npm run build && cd ..
+:: 3. портативный .exe
+cd electron && npm install && npm run dist
+:: 4. убрать build-мусор, оставить только .exe
+cd .. && clean.bat
 ```
 
-Backend:
+Результат — `electron/dist/Local Lead Studio 0.1.0.exe` (Windows x64, ~100 МБ, Python не нужен).
+
+## 🛠 Разработка
 
 ```cmd
-python -m py_compile backend\yamap_landing_web.py backend\yamap_landing_parser.py backend\lead_studio\adapters\sqlite_repo.py backend\lead_studio\job_manager.py
+:: frontend
+cd frontend && npx tsc -p tsconfig.app.json --noEmit && npm run lint && npm run build
+:: backend
+cd backend && python -m py_compile yamap_landing_web.py core.py lead_pipeline.py
 ```
 
-Запуск backend отдельно:
+## 🔒 Данные и приватность
 
-```cmd
-python backend\yamap_landing_web.py --host 127.0.0.1 --port 8765
-```
+- БД, выгрузки, фото → папка `lead_studio_data` рядом с парсером (в dev — в корне проекта, в portable — рядом с `.exe`). В git не коммитятся.
+- Только публичные данные карточек. Чужие фото/отзывы не публиковать без согласия.
 
-## Операционные правила
+## ⚠️ Ограничения
 
-- Backend рассчитан на localhost.
-- CORS открыт только для `localhost:5173` и `127.0.0.1:5173`.
-- Удаление лида, импорт базы и сброс базы требуют header `X-LocalLead-Confirm: 1`.
-- Не коммитить `.db`, `lead_studio_data/`, логи, screenshots, `dist/`, `node_modules/`.
-- Если Яндекс начинает ограничивать запросы, сбор останавливается через guard.
-
-## Известные ограничения
-
-- Это локальный рабочий инструмент, не публичный сервис.
-- Playwright в проекте не установлен.
-- `npm run build` может показывать warning про chunk больше 500 kB.
+- Локальный инструмент; backend слушает только `localhost`.
+- 2GIS зависит от установленного браузера.
+- Портативный `.exe` — Windows x64; первый запуск медленнее (распаковка во временную папку).
+- Подписи кода нет — SmartScreen может предупредить при первом запуске.
