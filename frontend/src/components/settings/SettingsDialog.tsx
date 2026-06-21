@@ -32,7 +32,7 @@ export function SettingsDialog({ preferences, onPreferencesChange }: SettingsDia
       </DialogTrigger>
 
       {/* Широкая модалка с кастомным макетом */}
-      <DialogContent className="!max-w-[1400px] w-[95vw] h-[85vh] p-0 flex flex-col overflow-hidden bg-slate-50 gap-0">
+      <DialogContent className="max-w-[1400px]! w-[95vw] h-[85vh] p-0 flex flex-col overflow-hidden bg-slate-50 gap-0">
         <DialogHeader className="px-6 py-4 border-b bg-white shrink-0">
           <DialogTitle className="text-xl">Настройки</DialogTitle>
         </DialogHeader>

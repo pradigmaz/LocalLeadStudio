@@ -6,7 +6,7 @@ import re
 import uuid
 from pathlib import Path
 from urllib.parse import urlparse
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Dict, List, Optional
 
 logger = logging.getLogger(__name__)
 
@@ -158,7 +158,6 @@ RUN_STAT_COLUMNS = {
     "enriched_count",
     "existing_count",
 }
-SOURCE_FIELDS = {"source", "source_org_id", "source_url", "raw_json"}
 
 class SQLiteRepo:
     def __init__(self, db_path: str | Path):
@@ -265,13 +264,6 @@ class SQLiteRepo:
                     "{}",
                 ),
             )
-
-    def upsert_organization(self, org_data: Dict[str, Any]) -> Tuple[str, bool]:
-        """
-        Upserts an organization. Returns (id, is_new).
-        """
-        result = self.merge_organization(org_data, {})
-        return result["organization_id"], result["action"] == "CREATED"
 
     def merge_organization(self, org_data: Dict[str, Any], lead_data: Dict[str, Any]) -> Dict[str, Any]:
         source = org_data.get("source", "yandex")
@@ -416,10 +408,6 @@ class SQLiteRepo:
             ),
         )
 
-    def create_or_get_lead(self, org_id: str, lead_data: Dict[str, Any]) -> str:
-        with self.get_connection() as conn:
-            return self._create_or_get_lead_conn(conn, org_id, lead_data)
-
     def _create_or_get_lead_conn(self, conn: sqlite3.Connection, org_id: str, lead_data: Dict[str, Any]) -> str:
         existing = conn.execute("SELECT id FROM leads WHERE organization_id = ?", (org_id,)).fetchone()
         if existing:
@@ -527,7 +515,6 @@ class SQLiteRepo:
         return keys
 
     def update_lead_status(self, lead_id: str, status: str, old_status: str, comment: str = ""):
-        import uuid
         with self.get_connection() as conn:
             conn.execute("UPDATE leads SET lead_status = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?", (status, lead_id))
             conn.execute(
@@ -555,7 +542,6 @@ class SQLiteRepo:
             return viewed_row["viewed_at"] if viewed_row else None
 
     def create_run(self, run_data: Dict[str, Any]) -> str:
-        import uuid
         run_id = str(uuid.uuid4())
         fields = ["id", "name", "region", "cities_json", "niches_json", "queries_json", "filters_json", "output_folder"]
         placeholders = ", ".join(["?"] * len(fields))

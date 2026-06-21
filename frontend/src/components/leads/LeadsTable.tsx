@@ -62,14 +62,12 @@ export function LeadsTable({ leads, onLeadClick }: LeadsTableProps) {
       return priorityA - priorityB;
     }
 
-    // 2. Type: NEW_SITE first
+    // 2. Type: NEW_SITE first (list already arrives created_at DESC from API)
     if (a.lead_type !== b.lead_type) {
       if (a.lead_type === 'NEW_SITE') return -1;
       if (b.lead_type === 'NEW_SITE') return 1;
     }
-
-    // 3. Date (newest first, assuming id is timestamp-based or just fallback)
-    return 0; // We don't have created_at in Lead type!
+    return 0;
   }), [filteredLeads]);
 
   if (leads.length === 0) {
@@ -109,8 +107,8 @@ export function LeadsTable({ leads, onLeadClick }: LeadsTableProps) {
   const isViewedNewLead = (lead: Lead) => lead.lead_status === 'NEW' && Boolean(lead.viewed_at);
 
   return (
-    <div className="p-1.5 rounded-[2rem] bg-slate-50/50 border border-slate-200/50 shadow-sm flex flex-col">
-      <div className="rounded-[calc(2rem-0.375rem)] bg-white/80 backdrop-blur-2xl shadow-[inset_0_1px_1px_rgba(255,255,255,0.8)] border border-slate-100 overflow-hidden flex flex-col flex-1">
+    <div className="p-1.5 rounded-4xl bg-slate-50/50 border border-slate-200/50 shadow-sm flex flex-col">
+      <div className="rounded-[1.625rem] bg-white/80 backdrop-blur-2xl shadow-[inset_0_1px_1px_rgba(255,255,255,0.8)] border border-slate-100 overflow-hidden flex flex-col flex-1">
         {/* Фильтры и поиск */}
         <div className="p-5 border-b border-slate-100 bg-white/40 flex flex-wrap items-center gap-5 shrink-0">
           <div className="relative flex-1 min-w-[240px]">
@@ -205,7 +203,7 @@ export function LeadsTable({ leads, onLeadClick }: LeadsTableProps) {
             <tbody>
               <tr>
                 <td colSpan={6} className="p-0">
-                  <div className="flex-1 flex flex-col items-center justify-center text-slate-400 p-16 text-center bg-slate-50/30 border border-dashed border-slate-200/60 rounded-[1.5rem] m-6 transition-all">
+                  <div className="flex-1 flex flex-col items-center justify-center text-slate-400 p-16 text-center bg-slate-50/30 border border-dashed border-slate-200/60 rounded-3xl m-6 transition-all">
                     <svg className="w-12 h-12 mb-4 text-slate-300" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="1.5" d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10"></path></svg>
                     <p className="font-medium text-slate-600">Ничего не найдено</p>
                     <p className="text-sm mt-1">Попробуйте изменить параметры фильтрации</p>

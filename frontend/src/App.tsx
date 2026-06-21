@@ -59,7 +59,7 @@ function App() {
     };
 
     void loadInitialLeads();
-  }, []);
+  }, [loadLeads]);
 
   useEffect(() => {
     fetch('/api/settings/preferences')
@@ -262,8 +262,8 @@ function App() {
       {/* Main Content */}
       <div className="flex-1 flex flex-col h-full overflow-hidden relative">
         {/* Header */}
-        <header className="h-14 border-b bg-white flex items-center px-8 justify-between shrink-0 shadow-sm z-10">
-          <h1 className="font-semibold text-lg flex items-center gap-3">
+        <header className="min-h-14 border-b bg-white flex items-center px-8 justify-between shrink-0 shadow-sm z-10 py-2 gap-4">
+          <h1 className="font-semibold text-lg flex items-center gap-3 shrink-0">
             Единая база
             {leads.length > 0 && (
               <Badge variant="secondary" className="font-mono text-xs font-semibold">
