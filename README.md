@@ -51,12 +51,12 @@ electron/dist/Local Lead Studio 0.1.0.exe   ← двойной клик
 | Python | 3.10+ | https://www.python.org/downloads/ |
 | Node.js | 18+ (LTS) | https://nodejs.org/en/download/ |
 
-- **Windows:** при установке Python отметь галочку **«Add python.exe to PATH»**.
+- **Windows:** при установке Python отметить галочку **«Add python.exe to PATH»**.
   Node.js — обычный установщик `.msi`, ничего отмечать не надо.
 - **macOS:** проще через [Homebrew](https://brew.sh/): `brew install python node`.
-  Либо скачай установщики `.pkg` по ссылкам выше.
+  Либо скачать установщики `.pkg` по ссылкам выше.
 
-Проверь, что оба в PATH (новый терминал):
+Проверить, что оба в PATH (новый терминал):
 ```bash
 python --version    # на macOS может быть python3 --version
 node --version
@@ -64,7 +64,7 @@ node --version
 
 #### Шаг 2. Скачать проект
 
-Скачай ZIP с репозитория и распакуй, либо через git:
+Скачать ZIP с репозитория и распаковать, либо через git:
 ```bash
 git clone <repo-url>
 cd LocalLeadStudio
@@ -72,8 +72,7 @@ cd LocalLeadStudio
 
 #### Шаг 3. Запустить
 
-Один скрипт сам создаёт `venv`, ставит зависимости, собирает UI (один раз) и
-открывает окно Electron. Запускать из папки `LocalLeadStudio`.
+Один скрипт сам создаёт `venv`, ставит зависимости, собирает UI (один раз) и открывает окно Electron. Запускать из папки `LocalLeadStudio`.
 
 **🖥️ Windows** (двойной клик по файлу или в `cmd`):
 ```cmd
