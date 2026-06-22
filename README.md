@@ -5,7 +5,7 @@
 **Поиск клиентов для техспеца: карточки бизнесов из Яндекс.Карт и 2GIS → чистая база лидов → готовность к сделке.**
 
 ![Platform](https://img.shields.io/badge/platform-Windows%20x64-0078D6?logo=windows)
-![Python](https://img.shields.io/badge/Python-3.x-3776AB?logo=python&logoColor=white)
+![Python](https://img.shields.io/badge/Python-3.10+-3776AB?logo=python&logoColor=white)
 ![React](https://img.shields.io/badge/React-19-61DAFB?logo=react&logoColor=black)
 ![Electron](https://img.shields.io/badge/Electron-33-47848F?logo=electron&logoColor=white)
 ![Status](https://img.shields.io/badge/mode-local%20only-success)
@@ -23,7 +23,6 @@
 - ♻️ Дедупликация: повторный сбор не плодит дубли и не сбивает ручной статус.
 - 🗂 Карточка лида: телефоны, сайты, соцсети, фото, история, папка с данными.
 - 📊 Скоринг и статусы: `NEW → POTENTIAL → IN_PROGRESS → PROCESSED` (+ `REJECT` / `CHAIN`).
-- ⚡ Аудит сайта без браузера — `scripts/site_audit.py` (Google PageSpeed / Lighthouse).
 - 🖥 Портативная десктоп-версия (Electron) — Python на машине не нужен.
 
 ## 🚀 Быстрый старт
@@ -40,13 +39,55 @@ electron/dist/Local Lead Studio 0.1.0.exe   ← двойной клик
 
 ### Из исходников (без сборки)
 
-> Требуется **Python 3.x** и **Node.js**. `run.bat` сам поставит зависимости при первом запуске и откроет браузер.
+Всё ставится **локально в папку проекта** (`backend/venv`, `node_modules`). В систему
+глобально ничего не пишется — удалил папку проекта, и следов не осталось.
 
+#### Шаг 1. Поставить Python и Node.js
+
+Нужны два инструмента (ставятся один раз на машину):
+
+| Инструмент | Версия | Скачать |
+| :--------- | :----- | :------ |
+| Python | 3.10+ | https://www.python.org/downloads/ |
+| Node.js | 18+ (LTS) | https://nodejs.org/en/download/ |
+
+- **Windows:** при установке Python отметь галочку **«Add python.exe to PATH»**.
+  Node.js — обычный установщик `.msi`, ничего отмечать не надо.
+- **macOS:** проще через [Homebrew](https://brew.sh/): `brew install python node`.
+  Либо скачай установщики `.pkg` по ссылкам выше.
+
+Проверь, что оба в PATH (новый терминал):
+```bash
+python --version    # на macOS может быть python3 --version
+node --version
+```
+
+#### Шаг 2. Скачать проект
+
+Скачай ZIP с репозитория и распакуй, либо через git:
+```bash
+git clone <repo-url>
+cd LocalLeadStudio
+```
+
+#### Шаг 3. Запустить
+
+Один скрипт сам создаёт `venv`, ставит зависимости, собирает UI (один раз) и
+открывает окно Electron. Запускать из папки `LocalLeadStudio`.
+
+**🖥️ Windows** (двойной клик по файлу или в `cmd`):
 ```cmd
 run.bat
 ```
 
-Данные пишутся рядом — в `LocalLeadStudio\lead_studio_data`.
+**🍏 macOS / Linux** (в терминале):
+```bash
+bash run.sh
+```
+
+Первый запуск дольше (ставятся зависимости и собирается фронт). Дальше — сразу окно.
+
+Данные хранятся рядом — `lead_studio_data/`.
 
 | Сервис   | Адрес                        |
 | :------- | :--------------------------- |
@@ -78,7 +119,6 @@ backend/
   lead_studio/             SQLite-репозиторий, провайдеры (yandex, 2gis)
 frontend/                  React + Vite + Tailwind + shadcn
 electron/                  десктоп-обёртка (окно над локальным сервером)
-scripts/site_audit.py      аудит сайта без браузера (PageSpeed)
 ```
 
 ## 🌐 Источники и браузеры
