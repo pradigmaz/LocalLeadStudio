@@ -11,9 +11,11 @@ set "ROOT=%~dp0"
 where python >nul 2>nul || (echo [!] Нет Python 3.x в PATH: https://www.python.org/downloads/ & pause & exit /b 1)
 where npm    >nul 2>nul || (echo [!] Нет Node.js/npm: https://nodejs.org/ & pause & exit /b 1)
 
-python -c "import fastapi, uvicorn" 2>nul || (
+if not exist "%ROOT%backend\venv" (
+  echo Создаю venv для backend...
+  python -m venv "%ROOT%backend\venv"
   echo Ставлю зависимости backend...
-  python -m pip install -r "%ROOT%backend\requirements.txt" || (echo [!] pip install не удался & pause & exit /b 1)
+  "%ROOT%backend\venv\Scripts\pip.exe" install -r "%ROOT%backend\requirements.txt" || (echo [!] pip install не удался & pause & exit /b 1)
 )
 
 if not exist "%ROOT%frontend\node_modules" (

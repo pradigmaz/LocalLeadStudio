@@ -40,7 +40,14 @@ async function startBackend() {
       env: { ...process.env, LLS_DATA_DIR: dataDir },
     });
   } else {
-    backend = spawn('python', ['yamap_landing_web.py', '--port', String(PORT)], {
+    const fs = require('fs');
+    const isWin = process.platform === 'win32';
+    const venvPython = isWin
+      ? path.join(BACKEND_DIR, 'venv', 'Scripts', 'python.exe')
+      : path.join(BACKEND_DIR, 'venv', 'bin', 'python3');
+    const pythonBin = fs.existsSync(venvPython) ? venvPython : (isWin ? 'python' : 'python3');
+
+    backend = spawn(pythonBin, ['yamap_landing_web.py', '--port', String(PORT)], {
       cwd: BACKEND_DIR,
       stdio: 'inherit',
       shell: process.platform === 'win32',
