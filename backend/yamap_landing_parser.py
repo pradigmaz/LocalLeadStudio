@@ -2,9 +2,11 @@ from __future__ import annotations
 import argparse
 import json
 import re
-from urllib.request import Request, urlopen
 from pathlib import Path
 from typing import Any
+from urllib.parse import parse_qs, unquote, urlparse
+from urllib.request import Request, urlopen
+from uuid import uuid4
 from openpyxl import load_workbook
 
 
@@ -16,7 +18,13 @@ except Exception:
     CONFIG = {"parser": {"headers": {}, "social_domains": [], "max_photos": 12}}
 
 HEADERS = CONFIG["parser"].get("headers", {})
-SOCIAL_DOMAINS = tuple(CONFIG["parser"].get("social_domains", []))
+DEFAULT_SOCIAL_DOMAINS = (
+    "yclients.com", "dikidi.net", "dikidi.ru", "prodoctorov.ru", "zoon.ru",
+    "vk.com", "vk.ru", "max.ru", "t.me", "wa.me", "whatsapp.com",
+    "instagram.com", "facebook.com", "viber.com", "youtube.com", "ok.ru",
+    "taplink.cc", "aqulas.me", "nethouse.ru",
+)
+SOCIAL_DOMAINS = tuple(dict.fromkeys((*DEFAULT_SOCIAL_DOMAINS, *CONFIG["parser"].get("social_domains", []))))
 IMAGE_SIZE = "L_height"
 
 def text(value: Any) -> str:
@@ -130,13 +138,31 @@ def feature_names(item: dict[str, Any]) -> list[str]:
 def links_from_item(item: dict[str, Any], row: dict[str, str]) -> tuple[list[str], list[str]]:
     websites = []
     socials = []
-    
+
+    def is_host_in(host: str, domains: tuple[str, ...]) -> bool:
+        return any(host == domain or host.endswith(f".{domain}") for domain in domains)
+
+    def unwrap_vk_away(href: str) -> str:
+        parsed = urlparse(href)
+        host = (parsed.hostname or "").lower()
+        if host in {"vk.ru", "vk.com"} and parsed.path.startswith("/away"):
+            return unquote(parse_qs(parsed.query).get("to", [""])[0]).strip()
+        return href
+
+    def href_host(href: str) -> str:
+        parsed = urlparse(href)
+        if not parsed.scheme:
+            parsed = urlparse(f"https:{href}" if href.startswith("//") else f"https://{href}")
+        if parsed.scheme not in {"http", "https"}:
+            return ""
+        return (parsed.hostname or "").lower()
+
     def route_link(href: str) -> None:
-        if not href:
+        href = unwrap_vk_away(text(href))
+        host = href_host(href)
+        if not host or is_host_in(host, ("yandex.ru", "ya.ru")):
             return
-        hl = href.lower()
-        # If it's a booking widget, taplink, or social network, route it to socials
-        if any(d in hl for d in SOCIAL_DOMAINS):
+        if is_host_in(host, SOCIAL_DOMAINS):
             socials.append(href)
         else:
             websites.append(href)
@@ -148,12 +174,68 @@ def links_from_item(item: dict[str, Any], row: dict[str, str]) -> tuple[list[str
         route_link(text(link.get("href") or link.get("url")))
     for link in item.get("socialLinks") or []:
         href = text(link.get("href"))
-        if href:
+        unwrapped = unwrap_vk_away(href)
+        if unwrapped != href:
+            route_link(unwrapped)
+        elif href:
             socials.append(href)
     excel_socials = first_value(row, "Соцсети", "whatsapp", "telegram", "vkontakte")
     if excel_socials:
         socials.extend([part.strip() for part in excel_socials.split(",") if part.strip()])
     return sorted(set(websites)), sorted(set(socials))
+
+
+def repair_missing_website_data(repo: Any) -> int:
+    repaired = 0
+    with repo.get_connection() as conn:
+        rows = conn.execute(
+            """
+            SELECT o.id, s.raw_json
+            FROM organizations o
+            JOIN organization_sources s ON s.organization_id = o.id AND s.source = 'yandex'
+            WHERE COALESCE(o.websites_json, '') IN ('', '[]', '{}')
+            """
+        ).fetchall()
+        for row in rows:
+            try:
+                item = json.loads(row["raw_json"] or "{}")
+            except (TypeError, json.JSONDecodeError):
+                continue
+            if not isinstance(item, dict):
+                continue
+
+            websites, _ = links_from_item(item, {})
+            if not websites:
+                continue
+            updated = conn.execute(
+                """
+                UPDATE organizations
+                SET websites_json = ?
+                WHERE id = ? AND COALESCE(websites_json, '') IN ('', '[]', '{}')
+                """,
+                (json.dumps(websites, ensure_ascii=False), row["id"]),
+            )
+            if updated.rowcount != 1:
+                continue
+
+            leads = conn.execute(
+                "SELECT id FROM leads WHERE organization_id = ? AND lead_type = 'NEW_SITE'",
+                (row["id"],),
+            ).fetchall()
+            for lead in leads:
+                conn.execute(
+                    "UPDATE leads SET lead_type = 'REDESIGN', updated_at = CURRENT_TIMESTAMP WHERE id = ?",
+                    (lead["id"],),
+                )
+                conn.execute(
+                    """
+                    INSERT INTO lead_events (id, lead_id, event_type, old_value, new_value, comment)
+                    VALUES (?, ?, 'WEBSITE_REPAIRED', 'NEW_SITE', 'REDESIGN', 'Сайт восстановлен из сохранённых данных Яндекс')
+                    """,
+                    (str(uuid4()), lead["id"]),
+                )
+            repaired += 1
+    return repaired
 
 
 def row_reviews(reviews: list[dict[str, str]], org_id: str, limit: int) -> list[dict[str, str]]:

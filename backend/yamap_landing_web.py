@@ -1,6 +1,7 @@
 from __future__ import annotations
 import asyncio
 import uuid
+from contextlib import asynccontextmanager
 from typing import Optional
 
 from fastapi import FastAPI, HTTPException, Query, Request as FastAPIRequest
@@ -33,6 +34,7 @@ from cities import (
 from folders import find_lead_folder, open_folder_in_file_manager, delete_lead_folders
 from guards import require_no_active_run
 from lead_pipeline import JOB_MANAGER
+from yamap_landing_parser import repair_missing_website_data
 
 import sys
 from pathlib import Path
@@ -79,7 +81,13 @@ class LeadUpdateRequest(BaseModel):
     contact_status: Optional[str] = None
     priority: Optional[int] = None
 
-app = FastAPI(title="Local Lead Studio API")
+@asynccontextmanager
+async def lifespan(_: FastAPI):
+    repair_missing_website_data(get_db_repo())
+    yield
+
+
+app = FastAPI(title="Local Lead Studio API", lifespan=lifespan)
 
 app.add_middleware(
     CORSMiddleware,
