@@ -1,33 +1,39 @@
-import { useState, useEffect } from "react"
-import { createPortal } from "react-dom"
-import { motion, AnimatePresence } from "framer-motion"
-import { X } from "lucide-react"
-import type { Lead, LeadPhoto } from "@/types"
-
-const photoUrl = (photo: LeadPhoto | string) => {
-  if (typeof photo === "string") return photo;
-  return photo.url || photo.src || photo.path || photo.template?.replace("%s", "L_height") || "";
-};
+import { useEffect, useState } from "react"
+import { motion } from "framer-motion"
+import { ChevronLeft, ChevronRight, X } from "lucide-react"
+import { Dialog, DialogContent, DialogTitle } from "@/components/ui/dialog"
+import { buildPhotoGallery, movePhotoIndex } from "@/lib/photo-gallery"
+import type { Lead } from "@/types"
 
 export function LeadModalPhotos({ lead }: { lead: Lead }) {
-  const [selectedPhoto, setSelectedPhoto] = useState<{ url: string; alt: string } | null>(null);
+  const [selection, setSelection] = useState<{ leadId: string; index: number } | null>(null)
+  const photos = buildPhotoGallery(lead.photos || [], lead.name)
+  const selectedIndex = selection?.leadId === lead.id ? selection.index : null
+  const selectedPhoto = selectedIndex === null ? null : photos[selectedIndex] || null
+  const selectedPhotoNumber = selectedIndex === null ? 0 : selectedIndex + 1
 
   useEffect(() => {
-    if (!selectedPhoto) return;
-    const handleKeyDown = (e: KeyboardEvent) => {
-      if (e.key === "Escape") {
-        setSelectedPhoto(null);
-      }
-    };
-    window.addEventListener("keydown", handleKeyDown);
-    return () => window.removeEventListener("keydown", handleKeyDown);
-  }, [selectedPhoto]);
+    if (selectedIndex === null) return
 
-  const photos = (lead.photos || [])
-    .map((photo) => ({ url: photoUrl(photo), alt: typeof photo === "string" ? lead.name : photo.alt || lead.name }))
-    .filter((photo) => photo.url);
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key !== "ArrowLeft" && event.key !== "ArrowRight") return
+      event.preventDefault()
+      setSelection((current) => current === null
+        ? null
+        : { ...current, index: movePhotoIndex(current.index, event.key === "ArrowLeft" ? -1 : 1, photos.length) })
+    }
 
-  if (!photos.length) return null;
+    window.addEventListener("keydown", handleKeyDown)
+    return () => window.removeEventListener("keydown", handleKeyDown)
+  }, [selectedIndex, photos.length])
+
+  if (!photos.length) return null
+
+  const moveSelection = (direction: -1 | 1) => {
+    setSelection((current) => current === null
+      ? null
+      : { ...current, index: movePhotoIndex(current.index, direction, photos.length) })
+  }
 
   return (
     <>
@@ -39,68 +45,83 @@ export function LeadModalPhotos({ lead }: { lead: Lead }) {
       >
         <h4 className="text-sm font-medium text-muted-foreground uppercase tracking-wider">Фотографии ({photos.length})</h4>
         <div className="flex gap-3 overflow-x-auto pb-3 scrollbar-thin">
-          {photos.map((photo, i) => (
-            <motion.div
-              key={`${photo.url}-${i}`}
-              className="relative h-28 w-44 shrink-0 overflow-hidden rounded-lg border bg-muted shadow-xs cursor-zoom-in"
+          {photos.map((photo, index) => (
+            <motion.button
+              key={`${photo.thumbnailUrl}-${index}`}
+              type="button"
+              className="relative h-28 w-44 shrink-0 overflow-hidden rounded-lg border bg-muted shadow-xs cursor-zoom-in focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:outline-none"
               initial={{ opacity: 0, scale: 0.96 }}
               animate={{ opacity: 1, scale: 1 }}
               whileHover={{ y: -2, scale: 1.02 }}
-              transition={{ duration: 0.18, delay: i * 0.025 }}
-              onClick={() => setSelectedPhoto(photo)}
+              transition={{ duration: 0.18, delay: index * 0.025 }}
+              onClick={() => setSelection({ leadId: lead.id, index })}
+              aria-label={`Открыть фотографию ${index + 1} из ${photos.length}`}
             >
               <img
-                src={photo.url}
-                alt={`${photo.alt} photo ${i + 1}`}
+                src={photo.thumbnailUrl}
+                alt={`${photo.alt}, фото ${index + 1}`}
                 className="size-full object-cover transition-transform duration-500 hover:scale-110"
                 loading="lazy"
               />
-            </motion.div>
+            </motion.button>
           ))}
         </div>
       </motion.div>
 
-      {typeof document !== "undefined" ? createPortal(
-        <AnimatePresence>
+      <Dialog open={selectedIndex !== null} onOpenChange={(open) => !open && setSelection(null)}>
+        <DialogContent
+          className="flex h-[min(90vh,960px)] w-[min(96vw,1200px)] max-w-none! flex-col gap-0 overflow-hidden border-white/15 bg-black p-0 text-white sm:max-w-none!"
+          showCloseButton={false}
+          aria-describedby={undefined}
+        >
+          <DialogTitle className="sr-only">Фотографии: {lead.name}</DialogTitle>
           {selectedPhoto && (
-            <motion.div
-              className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/90 backdrop-blur-md cursor-zoom-out pointer-events-auto"
-              initial={{ opacity: 0 }}
-              animate={{ opacity: 1 }}
-              exit={{ opacity: 0 }}
-              transition={{ duration: 0.2 }}
-              onClick={() => setSelectedPhoto(null)}
-            >
-              <motion.button
-                className="absolute top-4 right-4 text-white hover:text-slate-200 bg-white/10 hover:bg-white/20 active:scale-95 rounded-full p-2 transition-all shadow-md z-[10000]"
-                onClick={(e) => {
-                  e.stopPropagation();
-                  setSelectedPhoto(null);
-                }}
-                whileHover={{ scale: 1.05 }}
-                whileTap={{ scale: 0.95 }}
-              >
-                <X className="size-6" />
-              </motion.button>
-              <motion.div
-                className="relative max-w-[95vw] max-h-[90vh] flex items-center justify-center p-4"
-                initial={{ scale: 0.92, opacity: 0 }}
-                animate={{ scale: 1, opacity: 1 }}
-                exit={{ scale: 0.92, opacity: 0 }}
-                transition={{ type: "spring", damping: 25, stiffness: 260 }}
-                onClick={(e) => e.stopPropagation()}
-              >
+            <>
+              <div className="flex items-center justify-between gap-4 px-4 py-3 text-sm text-white/75">
+                <span aria-live="polite">Фото {selectedPhotoNumber} из {photos.length}</span>
+                <button
+                  type="button"
+                  className="rounded-full p-2 text-white transition-colors hover:bg-white/15 focus-visible:ring-2 focus-visible:ring-white focus-visible:outline-none"
+                  onClick={() => setSelection(null)}
+                  aria-label="Закрыть просмотр фотографий"
+                >
+                  <X className="size-5" aria-hidden="true" />
+                </button>
+              </div>
+
+              <div className="relative flex min-h-0 flex-1 items-center justify-center p-4 sm:p-8">
+                {photos.length > 1 && (
+                  <button
+                    type="button"
+                    className="absolute left-2 z-10 rounded-full bg-black/55 p-3 text-white shadow-lg transition-colors hover:bg-black/80 focus-visible:ring-2 focus-visible:ring-white focus-visible:outline-none sm:left-5"
+                    onClick={() => moveSelection(-1)}
+                    aria-label="Предыдущая фотография"
+                  >
+                    <ChevronLeft className="size-6" aria-hidden="true" />
+                  </button>
+                )}
+
                 <img
-                  src={selectedPhoto.url}
+                  src={selectedPhoto.viewerUrl}
                   alt={selectedPhoto.alt}
-                  className="max-w-[90vw] max-h-[85vh] object-contain rounded-lg shadow-2xl border border-white/10"
+                  className="max-h-full max-w-full rounded-lg border border-white/10 object-contain shadow-2xl"
                 />
-              </motion.div>
-            </motion.div>
+
+                {photos.length > 1 && (
+                  <button
+                    type="button"
+                    className="absolute right-2 z-10 rounded-full bg-black/55 p-3 text-white shadow-lg transition-colors hover:bg-black/80 focus-visible:ring-2 focus-visible:ring-white focus-visible:outline-none sm:right-5"
+                    onClick={() => moveSelection(1)}
+                    aria-label="Следующая фотография"
+                  >
+                    <ChevronRight className="size-6" aria-hidden="true" />
+                  </button>
+                )}
+              </div>
+            </>
           )}
-        </AnimatePresence>,
-        document.body
-      ) : null}
+        </DialogContent>
+      </Dialog>
     </>
-  );
+  )
 }
