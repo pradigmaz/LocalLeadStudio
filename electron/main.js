@@ -2,12 +2,13 @@ const { app, BrowserWindow, shell } = require('electron');
 const { spawn } = require('child_process');
 const net = require('net');
 const path = require('path');
-const { handleExternalWindow } = require('./external-links');
+const { handleExternalNavigation, handleExternalWindow } = require('./external-links');
 const { waitForPort } = require('./wait-port');
 
 const PORT = 8765;
 const BACKEND_DIR = path.join(__dirname, '..', 'backend');
 let backend = null;
+let mainWindow = null;
 
 // Одна попытка коннекта: занят ли порт уже живым backend.
 function isPortListening(port, timeoutMs = 800) {
@@ -65,18 +66,35 @@ function killBackend() {
   backend = null;
 }
 
+function focusMainWindow() {
+  if (!mainWindow || mainWindow.isDestroyed()) return;
+  if (mainWindow.isMinimized()) mainWindow.restore();
+  mainWindow.focus();
+}
+
 async function createWindow() {
+  if (mainWindow) {
+    focusMainWindow();
+    return;
+  }
   const win = new BrowserWindow({
     width: 1440,
     height: 900,
     title: 'Local Lead Studio',
     backgroundColor: '#f1f5f9',
   });
+  mainWindow = win;
+  win.on('closed', () => {
+    if (mainWindow === win) mainWindow = null;
+  });
   try {
     await waitForPort(PORT);
     win.loadURL(`http://127.0.0.1:${PORT}`);
     win.webContents.on('did-finish-load', () => win.webContents.setZoomFactor(1));
     win.webContents.setWindowOpenHandler(({ url }) => handleExternalWindow(url, shell.openExternal));
+    win.webContents.on('will-navigate', (event, url) => {
+      if (handleExternalNavigation(url, `http://127.0.0.1:${PORT}`, shell.openExternal)) event.preventDefault();
+    });
   } catch (err) {
     win.loadURL('data:text/html,' + encodeURIComponent(
       `<h2 style="font-family:sans-serif;padding:2rem">Backend не запустился: ${err.message}.<br>Проверь, что установлен Python и зависимости backend.</h2>`
@@ -84,16 +102,21 @@ async function createWindow() {
   }
 }
 
-app.whenReady().then(async () => {
-  await startBackend();
-  createWindow();
-  app.on('activate', () => {
-    if (BrowserWindow.getAllWindows().length === 0) createWindow();
-  });
-});
-
-app.on('window-all-closed', () => {
-  killBackend();
+if (!app.requestSingleInstanceLock()) {
   app.quit();
-});
-app.on('quit', killBackend);
+} else {
+  app.on('second-instance', focusMainWindow);
+  app.whenReady().then(async () => {
+    await startBackend();
+    await createWindow();
+    app.on('activate', () => {
+      if (BrowserWindow.getAllWindows().length === 0) createWindow();
+    });
+  });
+
+  app.on('window-all-closed', () => {
+    killBackend();
+    app.quit();
+  });
+  app.on('quit', killBackend);
+}

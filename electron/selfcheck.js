@@ -2,7 +2,7 @@
 const assert = require('assert');
 const net = require('net');
 const { waitForPort } = require('./wait-port');
-const { handleExternalWindow } = require('./external-links');
+const { handleExternalNavigation, handleExternalWindow } = require('./external-links');
 
 (async () => {
   // 1. живой порт -> резолв
@@ -33,6 +33,22 @@ const { handleExternalWindow } = require('./external-links');
   handleExternalWindow('file:///C:/Windows/System32', (url) => openedUrls.push(url));
   await new Promise(setImmediate);
   assert.deepStrictEqual(openedUrls, ['https://yandex.ru/maps']);
+
+  // Навигация наружу не заменяет локальный интерфейс внутри Electron.
+  assert.strictEqual(
+    handleExternalNavigation('https://example.com', 'http://127.0.0.1:8765', (url) => openedUrls.push(url)),
+    true,
+  );
+  await new Promise(setImmediate);
+  assert.deepStrictEqual(openedUrls, ['https://yandex.ru/maps', 'https://example.com']);
+  assert.strictEqual(
+    handleExternalNavigation('http://127.0.0.1:8765/api/settings/export', 'http://127.0.0.1:8765', (url) => openedUrls.push(url)),
+    false,
+  );
+  assert.strictEqual(
+    handleExternalNavigation('file:///C:/Windows/System32', 'http://127.0.0.1:8765', (url) => openedUrls.push(url)),
+    true,
+  );
 
   console.log('selfcheck ok');
 })().catch((e) => { console.error(e); process.exit(1); });
