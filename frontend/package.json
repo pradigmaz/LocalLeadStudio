@@ -5,6 +5,7 @@
   "type": "module",
   "scripts": {
     "dev": "concurrently \"vite\" \"python ..\\backend\\yamap_landing_web.py --port 8765\"",
+    "test:social-platform": "node --experimental-strip-types --test tests/social-platform.test.ts",
     "build": "tsc -b && vite build",
     "lint": "eslint .",
     "preview": "vite preview"

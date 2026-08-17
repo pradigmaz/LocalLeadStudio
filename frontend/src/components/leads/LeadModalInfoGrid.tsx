@@ -1,20 +1,57 @@
 import { Button } from "@/components/ui/button"
-import { Clock, ExternalLink, FolderOpen, Globe, Link, Phone } from "lucide-react"
+import { Camera, Clock, ExternalLink, FolderOpen, Globe, Link, MessageCircle, Music2, Phone, PhoneCall, Play, Send } from "lucide-react"
 import { motion } from "framer-motion"
 import type { Lead } from "@/types"
 import { formatDisplayUrl } from "@/lib/url"
+import { getSocialPlatform, type SocialPlatform } from "@/lib/social-platform"
 
 const fadeLeft = { initial: { opacity: 0, x: -12 }, animate: { opacity: 1, x: 0 } };
 const fadeRight = { initial: { opacity: 0, x: 12 }, animate: { opacity: 1, x: 0 } };
 const fadeUp = { initial: { opacity: 0, y: 10 }, animate: { opacity: 1, y: 0 } };
 
-const getSocialLabel = (url: string) => {
-  if (/vk\.com|vkontakte/i.test(url)) return 'VK';
-  if (/youtube\.com|youtu\.be/i.test(url)) return 'YouTube';
-  if (/t\.me|telegram/i.test(url)) return 'Telegram';
-  if (/wa\.me|whatsapp/i.test(url)) return 'WhatsApp';
-  if (/viber/i.test(url)) return 'Viber';
-  return 'Ссылка';
+const SOCIAL_LABELS: Record<SocialPlatform, string> = {
+  vk: "VK",
+  whatsapp: "WhatsApp",
+  telegram: "Telegram",
+  max: "MAX",
+  youtube: "YouTube",
+  instagram: "Instagram",
+  facebook: "Facebook",
+  viber: "Viber",
+  ok: "Одноклассники",
+  tiktok: "TikTok",
+  x: "X",
+  link: "Ссылка",
+}
+
+function SocialPlatformIcon({ platform }: { platform: SocialPlatform }) {
+  const boxClass = "flex size-6 shrink-0 items-center justify-center rounded-md"
+  switch (platform) {
+    case "vk":
+      return <span className={`${boxClass} bg-[#0077ff] text-[9px] font-black tracking-[-0.08em] text-white`}>VK</span>
+    case "whatsapp":
+      return <span className={`${boxClass} bg-[#25d366] text-white`}><PhoneCall className="size-3.5" /></span>
+    case "telegram":
+      return <span className={`${boxClass} bg-[#229ed9] text-white`}><Send className="size-3.5" /></span>
+    case "max":
+      return <span className={`${boxClass} bg-slate-950 text-[8px] font-black tracking-[-0.08em] text-white`}>MAX</span>
+    case "youtube":
+      return <span className={`${boxClass} bg-[#ff0000] text-white`}><Play className="size-3.5 fill-current" /></span>
+    case "instagram":
+      return <span className={`${boxClass} bg-gradient-to-br from-[#833ab4] via-[#fd1d1d] to-[#fcaf45] text-white`}><Camera className="size-3.5" /></span>
+    case "facebook":
+      return <span className={`${boxClass} bg-[#1877f2] text-sm font-black text-white`}>f</span>
+    case "viber":
+      return <span className={`${boxClass} bg-[#7360f2] text-white`}><MessageCircle className="size-3.5" /></span>
+    case "ok":
+      return <span className={`${boxClass} bg-[#ee8208] text-[8px] font-black text-white`}>OK</span>
+    case "tiktok":
+      return <span className={`${boxClass} bg-black text-white`}><Music2 className="size-3.5" /></span>
+    case "x":
+      return <span className={`${boxClass} bg-black text-xs font-black text-white`}>X</span>
+    default:
+      return <span className={`${boxClass} bg-slate-100 text-slate-600`}><Link className="size-3.5" /></span>
+  }
 };
 
 const getSourceLabel = (source: string) => {
@@ -120,21 +157,21 @@ export function LeadModalInfoGrid({
               Соцсети и мессенджеры
             </div>
             {socialLinks.length > 0 ? (
-              socialLinks.map((s, i) => (
-                <a
+              socialLinks.map((s, i) => {
+                const platform = getSocialPlatform(s)
+                return <a
                   key={i}
                   href={s}
                   target="_blank"
                   rel="noreferrer"
                   className="flex items-center gap-2 overflow-hidden rounded-lg px-2 py-1.5 text-sm font-medium text-primary hover:bg-slate-50 transition-colors"
                   title={s}
+                  aria-label={`${SOCIAL_LABELS[platform]}: ${formatDisplayUrl(s)}`}
                 >
-                  <span className="min-w-18 shrink-0 rounded bg-slate-100 px-1.5 py-0.5 text-[10px] font-semibold uppercase text-slate-600">
-                    {getSocialLabel(s)}
-                  </span>
+                  <SocialPlatformIcon platform={platform} />
                   <span className="truncate">{formatDisplayUrl(s)}</span>
                 </a>
-              ))
+              })
             ) : (
               <span className="text-sm text-muted-foreground italic">Не указаны</span>
             )}

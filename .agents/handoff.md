@@ -15,3 +15,11 @@
 - CHANGED: Parse direct business URLs and VK `away` links, keep booking/social domains out of websites, and repair only empty website fields from stored Yandex JSON at backend startup.
 - VERIFIED: 6 unit tests, syntax check, frontend build, Electron selfcheck, rebuilt portable, and an isolated old-DB smoke test: 127 organizations repaired, including Сгоряча, Скоро Пицца, and Fresh Сервис Юг.
 - NEXT: Run `Local Lead Studio 0.1.0 site repair.exe` beside the existing `lead_studio_data`; the one-time repair is idempotent.
+
+## 2026-08-17 — platform icons for social links
+
+- TASK: Replace the generic social-link badge in a lead card with a recognizable platform icon.
+- STATE: Complete; test servers used only copied databases and are stopped.
+- CHANGED: Hostname mapping covers VK, WhatsApp, Telegram, MAX, YouTube, Instagram, Facebook, Viber (including `viber.click`), OK, TikTok, X, and a safe generic fallback.
+- VERIFIED: Node domain test, frontend lint/build, Electron selfcheck, source UI, and the final packaged backend card with Telegram/VK/WhatsApp; console was clean.
+- NEXT: Build frontend, then PyInstaller, then Electron whenever portable UI assets change; the backend bundle owns `frontend_dist`.
