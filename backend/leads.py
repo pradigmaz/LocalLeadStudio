@@ -12,9 +12,9 @@ from yamap_landing_parser import (
     feature_names,
     image_urls,
     links_from_item,
-    render_brief,
     http_get_html,
 )
+from lead_studio.card_files import render_card_brief
 
 from core import (
     COUNTRY_INDICATORS,
@@ -204,10 +204,12 @@ def download_photos(lead: dict, folder: Path) -> int:
 
 
 def save_lead(lead: dict, output_root: Path, download: bool) -> dict:
+    lead.setdefault("lead_status", "NEW")
     folder = output_root / f"{slug(lead['name'])}_{slug(lead['id'], 'noid')}"
     folder.mkdir(parents=True, exist_ok=True)
     if download:
         lead["downloaded_photos"] = download_photos(lead, folder)
     (folder / "data.json").write_text(json.dumps(lead, ensure_ascii=False, indent=2), encoding="utf-8")
-    (folder / "brief.md").write_text(render_brief(lead), encoding="utf-8-sig")
-    return {"name": lead["name"], "folder": str(folder), "photos": len(lead["photos"]), "site": ", ".join(lead["websites"]), "angle": "редизайн сайта" if lead["has_site"] else "новый сайт"}
+    (folder / "brief.md").write_text(render_card_brief(lead), encoding="utf-8-sig")
+    angle = "новый сайт" if lead.get("lead_type") == "NEW_SITE" or not lead["has_site"] else "редизайн сайта"
+    return {"name": lead["name"], "folder": str(folder), "photos": len(lead["photos"]), "site": ", ".join(lead["websites"]), "angle": angle}

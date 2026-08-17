@@ -24,7 +24,8 @@ from core import (
     normalize_queries,
 )
 from leads import search_items, lead_from_item, slug, save_lead
-from lead_filters import keep_lead, is_chain, apply_fields_to_parse
+from lead_filters import apply_fields_to_parse, has_contactable_social, is_chain, keep_lead, lead_type_for
+from lead_studio.card_files import sync_lead_card_status, sync_organization_card_websites
 from guards import (
     require_yandex_request_slot,
     record_yandex_search_attempt,
@@ -94,12 +95,17 @@ def auto_mark_skipped_lead(repo: SQLiteRepo, lead_db_id: str, reason: str) -> No
         return
 
     reason_lower = reason.lower()
+    status = None
     if "сетевик" in reason_lower:
-        repo.update_lead_status(lead_db_id, "CHAIN", current_status, "Авторазметка при парсинге")
+        status = "CHAIN"
     elif "мало отзывов" in reason_lower or "нет фото" in reason_lower:
-        repo.update_lead_status(lead_db_id, "JUNK", current_status, "Авторазметка при парсинге")
+        status = "JUNK"
     elif "популярное место" in reason_lower or "село/деревня" in reason_lower or "вне выбранного города" in reason_lower:
-        repo.update_lead_status(lead_db_id, "REJECT", current_status, "Авторазметка при парсинге")
+        status = "REJECT"
+
+    if status:
+        repo.update_lead_status(lead_db_id, status, current_status, "Авторазметка при парсинге")
+        sync_lead_card_status(repo, lead_db_id, status)
 
 
 def process_candidate(
@@ -126,22 +132,30 @@ def process_candidate(
 
     try:
         lead = candidate.to_lead(query)
-        apply_fields_to_parse(lead, fields_to_parse)
+        lead["lead_type"] = lead_type_for(lead)
 
         if is_chain(lead, chain_words):
             skipped.append({"query": query, "name": lead["name"], "reason": "сетевик"})
             stats["skipped_count"] += 1
             return False
+        if not has_contactable_social(lead):
+            skipped.append({"query": query, "name": lead["name"], "reason": "нет соцсетей или мессенджеров"})
+            stats["skipped_count"] += 1
+            return False
 
         ok, reason = keep_lead(lead, config, chain_words)
+        apply_fields_to_parse(lead, fields_to_parse)
         merge_result = repo.merge_organization(organization_data_from_lead(lead), {
-            "lead_type": "REDESIGN" if lead["has_site"] else "NEW_SITE",
+            "lead_type": lead["lead_type"],
             "lead_status": "NEW",
             "reason": f"Парсинг {candidate.source}: {query}",
         })
         org_id = merge_result["organization_id"]
         lead_db_id = merge_result["lead_id"]
         action = merge_result["action"]
+
+        if action == "ENRICHED":
+            sync_organization_card_websites(repo, org_id)
 
         if action == "CREATED":
             stats["created_count"] += 1

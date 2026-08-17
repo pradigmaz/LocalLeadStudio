@@ -40,6 +40,7 @@ import sys
 from pathlib import Path
 sys.path.append(str(Path(__file__).parent.resolve()))
 from lead_studio.lead_validation import validate_contact_status, validate_lead_status, validate_priority
+from lead_studio.card_files import sync_all_lead_card_statuses, sync_all_organization_card_websites, sync_lead_card_status
 
 
 class RunJobRequest(BaseModel):
@@ -83,7 +84,10 @@ class LeadUpdateRequest(BaseModel):
 
 @asynccontextmanager
 async def lifespan(_: FastAPI):
-    repair_missing_website_data(get_db_repo())
+    repo = get_db_repo()
+    repair_missing_website_data(repo)
+    sync_all_organization_card_websites(repo)
+    sync_all_lead_card_statuses(repo)
     yield
 
 
@@ -278,7 +282,9 @@ def update_lead(lead_id: str, request: LeadUpdateRequest, http_request: FastAPIR
             values.append(lead_id)
             set_clause = ", ".join(update_fields)
             conn.execute(f"UPDATE leads SET {set_clause}, updated_at = CURRENT_TIMESTAMP WHERE id = ?", values)
-            
+
+    if status_val:
+        sync_lead_card_status(repo, lead_id, status_val)
     return {"success": True}
 
 @app.post("/api/settings/reset_db")

@@ -6,8 +6,10 @@ from pathlib import Path
 from typing import Any
 from urllib.parse import parse_qs, unquote, urlparse
 from urllib.request import Request, urlopen
-from uuid import uuid4
 from openpyxl import load_workbook
+
+from lead_studio.card_files import render_brief
+from lead_studio.website_repair import repair_missing_website_data as repair_websites_from_sources
 
 
 ROOT = Path(__file__).parent.resolve()
@@ -186,56 +188,7 @@ def links_from_item(item: dict[str, Any], row: dict[str, str]) -> tuple[list[str
 
 
 def repair_missing_website_data(repo: Any) -> int:
-    repaired = 0
-    with repo.get_connection() as conn:
-        rows = conn.execute(
-            """
-            SELECT o.id, s.raw_json
-            FROM organizations o
-            JOIN organization_sources s ON s.organization_id = o.id AND s.source = 'yandex'
-            WHERE COALESCE(o.websites_json, '') IN ('', '[]', '{}')
-            """
-        ).fetchall()
-        for row in rows:
-            try:
-                item = json.loads(row["raw_json"] or "{}")
-            except (TypeError, json.JSONDecodeError):
-                continue
-            if not isinstance(item, dict):
-                continue
-
-            websites, _ = links_from_item(item, {})
-            if not websites:
-                continue
-            updated = conn.execute(
-                """
-                UPDATE organizations
-                SET websites_json = ?
-                WHERE id = ? AND COALESCE(websites_json, '') IN ('', '[]', '{}')
-                """,
-                (json.dumps(websites, ensure_ascii=False), row["id"]),
-            )
-            if updated.rowcount != 1:
-                continue
-
-            leads = conn.execute(
-                "SELECT id FROM leads WHERE organization_id = ? AND lead_type = 'NEW_SITE'",
-                (row["id"],),
-            ).fetchall()
-            for lead in leads:
-                conn.execute(
-                    "UPDATE leads SET lead_type = 'REDESIGN', updated_at = CURRENT_TIMESTAMP WHERE id = ?",
-                    (lead["id"],),
-                )
-                conn.execute(
-                    """
-                    INSERT INTO lead_events (id, lead_id, event_type, old_value, new_value, comment)
-                    VALUES (?, ?, 'WEBSITE_REPAIRED', 'NEW_SITE', 'REDESIGN', 'Сайт восстановлен из сохранённых данных Яндекс')
-                    """,
-                    (str(uuid4()), lead["id"]),
-                )
-            repaired += 1
-    return repaired
+    return repair_websites_from_sources(repo, links_from_item)
 
 
 def row_reviews(reviews: list[dict[str, str]], org_id: str, limit: int) -> list[dict[str, str]]:
@@ -319,66 +272,6 @@ def enrich_row(
         "fetch_error": error,
         "source_row": row,
     }
-
-
-def md_list(values: list[str], fallback: str = "не найдено") -> str:
-    clean = [value for value in values if value]
-    if not clean:
-        return f"- {fallback}"
-    return "\n".join(f"- {value}" for value in clean)
-
-
-def render_brief(lead: dict[str, Any]) -> str:
-    phones = [f"{p['number']} ({p['info']})".strip() for p in lead["phones"] if p.get("number")]
-    photos = [photo["url"] for photo in lead["photos"]]
-    reviews = [
-        f"{review['rating']}★, {review['author']}, {review['date']}: {review['text']}"
-        for review in lead["reviews"]
-        if review.get("text")
-    ]
-    site_status = "есть сайт (редизайн-лид)" if lead["has_site"] else "сайт не найден"
-    return "\n".join(
-        [
-            f"# Бриф для лендинга: {lead['name']}",
-            "## Источник",
-            f"- Яндекс Карты: {lead['yandex_url']}",
-            f"- Статус сайта: {site_status}",
-            f"- Ошибка обогащения: {lead['fetch_error'] or 'нет'}",
-            "",
-            "## Бизнес",
-            f"- Название: {lead['name']}",
-            f"- Категория: {lead['category']}",
-            f"- Адрес: {lead['address']}",
-            f"- Город/регион: {lead['city']} / {lead['region']}",
-            f"- Рейтинг: {lead['rating']} ({lead['rating_count']} оценок, {lead['review_count']} отзывов)",
-            f"- Время работы: {lead['hours'] or 'не найдено'}",
-            "",
-            "## Контакты",
-            md_list(phones),
-            "",
-            "## Ссылки",
-            "Сайт:",
-            md_list(lead["websites"]),
-            "",
-            "Соцсети и мессенджеры:",
-            md_list(lead["socials"]),
-            "",
-            "## Услуги и особенности",
-            md_list(lead["features"][:30]),
-            "",
-            "## Фото для опоры",
-            md_list(photos),
-            "",
-            "## Отзывы для опоры",
-            md_list(reviews),
-            "",
-            "## Что должен подчеркнуть лендинг",
-            f"- Первый экран: {lead['name']} — {lead['category']} по адресу {lead['address']}.",
-            f"- Доверие: рейтинг {lead['rating']}, отзывы, реальные фото, понятные контакты.",
-            '- Действие: кнопки "Позвонить", "Написать в WhatsApp", "Открыть в Яндекс Картах".',
-            "- Если сайта нет: эта страница может стать основной ссылкой для клиентов.",
-        ]
-    )
 
 
 def write_outputs(leads: list[dict[str, Any]], output_dir: Path) -> None:

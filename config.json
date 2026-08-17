@@ -50,7 +50,8 @@
       "leroy merlin", "лемана про", "lemana pro", "fix price", "фикс прайс", "familia", "фамилия", "kari", "кари", "zenden", "зенден", "centro",
       "летуаль", "л'этуаль", "rive gauche", "рив гош", "золотое яблоко", "подружка", "улыбка радуги",
       "ozon", "озон", "wildberries", "вайлдберриз", "wb", "яндекс маркет", "яндекс лавка", "самокат", "сбермаркет", "купер", "сдэк", "boxberry", "avito", "авито", "dpd", "почта россии",
-      "четыре лапы", "бетховен", "petshop", "fit service", "фит сервис", "вилгуд", "колесо.ру", "vianor"
+      "четыре лапы", "бетховен", "petshop", "fit service", "фит сервис", "вилгуд", "колесо.ру", "vianor",
+      "buntaro", "фенко", "рет"
     ],
     "chain_domains": [
       "5ka.ru", "x5.ru", "perekrestok.ru", "chizhik.club", "magnit.ru", "dixy.ru", "lenta.com", "auchan.ru", "okmarket.ru",
@@ -62,7 +63,7 @@
       "rigla.ru", "apteka-april.ru", "sportmaster.ru", "dns-shop.ru", "mvideo.ru", "eldorado.ru", "citilink.ru", "detmir.ru",
       "fix-price.com", "famil.ru", "kari.com", "zenden.ru", "letu.ru", "rivegauche.ru", "goldapple.ru", "podrygka.ru", "ozon.ru",
       "wildberries.ru", "market.yandex.ru", "lavka.yandex.ru", "samokat.ru", "kuper.ru", "cdek.ru", "boxberry.ru", "pochta.ru",
-      "fitauto.ru", "wilgood.ru", "koleso.ru"
+      "fitauto.ru", "wilgood.ru", "koleso.ru", "buntaro.ru", "fenkovrn.ru", "ret.ru"
     ],
     "popular_place_categories": ["ресторан", "бар", "кафе", "кофейня", "караоке", "ночной клуб", "банкетный зал"],
     "popular_place_min_reviews": 300,

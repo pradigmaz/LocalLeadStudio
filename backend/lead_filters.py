@@ -2,6 +2,7 @@ from __future__ import annotations
 import math
 import re
 from functools import lru_cache
+from urllib.parse import urlparse
 
 from core import (
     load_cities_data,
@@ -18,9 +19,39 @@ from core import (
     KNOWN_CITY_KEYS,
 )
 
+NON_CONTACT_SOCIAL_DOMAINS = (
+    "yclients.com",
+    "dikidi.net",
+    "dikidi.ru",
+    "prodoctorov.ru",
+    "zoon.ru",
+    "nethouse.ru",
+    "taplink.cc",
+)
+
+THIN_SITE_HOST_SUFFIXES = ("clients.site",)
+
 
 def normalize_filter_text(value: object) -> str:
     return re.sub(r"\s+", " ", re.sub(r"[^\w\sА-Яа-яЁё]", " ", str(value or "").lower().replace("ё", "е"))).strip()
+
+
+def link_host(value: object) -> str:
+    link = str(value or "").strip()
+    if not link:
+        return ""
+    parsed = urlparse(link if "://" in link or link.startswith("//") else f"https://{link.lstrip('/')}")
+    return (parsed.hostname or "").lower().rstrip(".")
+
+
+def is_thin_site(website: object) -> bool:
+    host = link_host(website)
+    return any(host == suffix or host.endswith(f".{suffix}") for suffix in THIN_SITE_HOST_SUFFIXES)
+
+
+def lead_type_for(lead: dict) -> str:
+    websites = [website for website in lead.get("websites") or [] if str(website or "").strip()]
+    return "NEW_SITE" if not websites or all(is_thin_site(website) for website in websites) else "REDESIGN"
 
 
 def strip_locality_type(value: object) -> str:
@@ -146,6 +177,14 @@ def is_chain(lead: dict, chain_words: list[str]) -> bool:
     return False
 
 
+def has_contactable_social(lead: dict) -> bool:
+    for value in lead.get("socials") or []:
+        host = link_host(value)
+        if host and not any(host == domain or host.endswith(f".{domain}") for domain in NON_CONTACT_SOCIAL_DOMAINS):
+            return True
+    return False
+
+
 def is_excluded_popular_place(lead: dict) -> bool:
     name = normalize_filter_text(lead.get("name"))
     city = normalize_filter_text(lead.get("city"))
@@ -172,7 +211,7 @@ def popular_place_review_limit(lead: dict) -> int:
 
 
 def is_high_profile_redesign(lead: dict) -> bool:
-    if not lead.get("has_site"):
+    if lead_type_for(lead) != "REDESIGN":
         return False
     category = normalize_filter_text(lead.get("category"))
     category_words = set(category.split())
@@ -193,12 +232,14 @@ def is_high_profile_redesign(lead: dict) -> bool:
 
 
 def keep_lead(lead: dict, config: dict, chain_words: list[str]) -> tuple[bool, str]:
-    # Приоритет — бизнесы без сайта. Тех, у кого сайт есть, по умолчанию пропускаем;
+    # Приоритет — бизнесы без полноценного сайта. Тех, у кого он есть, по умолчанию пропускаем;
     # для охоты на редизайн включить keepSitesForRedesign.
-    if config.get("skipWithSite", True) and lead["has_site"] and not config.get("keepSitesForRedesign", False):
+    if config.get("skipWithSite", True) and lead_type_for(lead) == "REDESIGN" and not config.get("keepSitesForRedesign", False):
         return False, "есть сайт"
     if is_chain(lead, chain_words):
         return False, "сетевик"
+    if not has_contactable_social(lead):
+        return False, "нет соцсетей или мессенджеров"
     if is_outside_target_city(lead):
         return False, "вне выбранного города"
     if is_low_value_locality_address(lead):
@@ -218,14 +259,11 @@ def keep_lead(lead: dict, config: dict, chain_words: list[str]) -> tuple[bool, s
 
 
 def apply_fields_to_parse(lead: dict, fields_to_parse: list[str] | None) -> None:
-    if not fields_to_parse:
+    if fields_to_parse is None:
         return
     fields = set(fields_to_parse)
     if "sites" not in fields:
         lead["websites"] = []
-        lead["has_site"] = False
-    if "socials" not in fields:
-        lead["socials"] = []
     if "phones" not in fields:
         lead["phones"] = []
     if "photos" not in fields:
