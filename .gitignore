@@ -33,4 +33,10 @@ dist/
 # PyInstaller / build artifacts
 /backend/build/
 /electron/dist/
+/electron/portable-*/
 *.spec.bak
+
+# Локальная диагностика
+/backend/temp_query.py
+/out.txt
+/update_lead.py
