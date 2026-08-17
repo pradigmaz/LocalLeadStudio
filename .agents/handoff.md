@@ -144,3 +144,21 @@
 - VERIFIED: Red→green: storefront was skipped and repair changed it to `REDESIGN`; now 11 focused + 22 full Python tests pass. `compileall` and `git diff --check` pass.
 - NEXT: Behavior reaches the user-running portable in the next approved build. Existing saved leads stay untouched.
 - ARCH: URL-host rule only; no visual judgement, crawl, config/UI or schema change. Mixed hosts stay `REDESIGN`.
+
+## 2026-08-17 — Yandex Business site label
+
+- TASK: Make `*.clients.site` visible as a Yandex Business site, not an unnamed URL or "Без сайта".
+- STATE: Done in source; no portable rebuild, database change or lead-status change.
+- CHANGED: Added hostname-only `isYandexBusinessSite`; every matching URL in the lead card now shows `Сайт на Яндекс Бизнесе`.
+- VERIFIED: Red→green focused Node test; 7 frontend Node tests, `npm run lint`, `npm run build`, and `git diff --check` pass.
+- NEXT: Visible in the next user-approved portable build/restart. Rendered live-card check skipped to avoid changing a real lead's viewed state.
+- ARCH: `*.clients.site` marks the Yandex Business platform only; lead type remains `NEW_SITE`, while a normal or mixed domain remains `REDESIGN`.
+
+## 2026-08-17 — Tilda hosted-site classification
+
+- TASK: Put `*.tilda.ws` into the same new-site lead branch as Yandex Business hosted sites.
+- STATE: Done in source; no portable rebuild, data migration or existing-lead mutation.
+- CHANGED: Added `tilda.ws` to shared thin-site hosts; Tilda-only/all-platform leads become `NEW_SITE`, while any normal domain remains `REDESIGN`. Card shows `Сайт на Tilda` next to the URL.
+- VERIFIED: Red→green backend classification and frontend hostname tests; 23 Python tests, `compileall`, 9 frontend Node tests, lint, build, and `git diff --check` pass.
+- NEXT: Visible in the next user-approved portable build/restart. Existing saved lead types stay unchanged.
+- ARCH: Hosted suffix means platform provenance, not a quality verdict; no URL crawl or visual scoring.

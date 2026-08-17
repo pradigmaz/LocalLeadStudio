@@ -2,7 +2,7 @@ import { Button } from "@/components/ui/button"
 import { Camera, Clock, ExternalLink, FolderOpen, Globe, Link, MessageCircle, Music2, Phone, PhoneCall, Play, Send } from "lucide-react"
 import { motion } from "framer-motion"
 import type { Lead } from "@/types"
-import { formatDisplayUrl } from "@/lib/url"
+import { formatDisplayUrl, isTildaSite, isYandexBusinessSite } from "@/lib/url"
 import { getSocialPlatform, type SocialPlatform } from "@/lib/social-platform"
 
 const fadeLeft = { initial: { opacity: 0, x: -12 }, animate: { opacity: 1, x: 0 } };
@@ -114,13 +114,26 @@ export function LeadModalInfoGrid({
               Сайты
             </div>
             {websiteLinks.length > 0 ? (
-              websiteLinks.map((w, i) => (
-                <div key={i} className="flex items-center gap-2 overflow-hidden">
-                  <a href={w} target="_blank" rel="noreferrer" className="text-sm font-medium text-primary hover:underline truncate" title={w}>
-                    {formatDisplayUrl(w)}
-                  </a>
-                </div>
-              ))
+              websiteLinks.map((w, i) => {
+                const platformLabel = isYandexBusinessSite(w)
+                  ? "Сайт на Яндекс Бизнесе"
+                  : isTildaSite(w)
+                    ? "Сайт на Tilda"
+                    : null
+
+                return (
+                  <div key={i} className="flex flex-wrap items-center gap-2 overflow-hidden">
+                    <a href={w} target="_blank" rel="noreferrer" className="text-sm font-medium text-primary hover:underline truncate" title={w}>
+                      {formatDisplayUrl(w)}
+                    </a>
+                    {platformLabel && (
+                      <span className="rounded-full bg-amber-50 px-2 py-0.5 text-[10px] font-medium text-amber-800">
+                        {platformLabel}
+                      </span>
+                    )}
+                  </div>
+                )
+              })
             ) : (
               <span className="text-sm text-muted-foreground italic">Без сайта</span>
             )}

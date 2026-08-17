@@ -29,7 +29,7 @@ NON_CONTACT_SOCIAL_DOMAINS = (
     "taplink.cc",
 )
 
-THIN_SITE_HOST_SUFFIXES = ("clients.site",)
+THIN_SITE_HOST_SUFFIXES = ("clients.site", "tilda.ws")
 
 
 def normalize_filter_text(value: object) -> str:

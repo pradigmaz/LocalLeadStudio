@@ -219,10 +219,22 @@ class CollectionFieldsTests(unittest.TestCase):
             brief = (Path(saved[0]["folder"]) / "brief.md").read_text(encoding="utf-8-sig")
             self.assertIn("сайт-витрина (новый сайт-лид)", brief)
 
+    def test_platform_sites_stay_new_site(self):
+        for websites in (
+            ["https://place-est21.clients.site/"],
+            ["https://demo-project.tilda.ws/"],
+            ["https://place-est21.clients.site/", "https://demo-project.tilda.ws/"],
+        ):
+            with self.subTest(websites=websites):
+                lead = sample_lead()
+                lead["websites"] = websites
+                self.assertEqual(lead_type_for(lead), "NEW_SITE")
+
     def test_normal_site_or_mixed_sites_stay_redesign(self):
         for websites in (
             ["https://place-est21.ru/"],
             ["https://place-est21.clients.site/", "https://place-est21.ru/"],
+            ["https://demo-project.tilda.ws/", "https://place-est21.ru/"],
         ):
             with self.subTest(websites=websites):
                 lead = sample_lead()

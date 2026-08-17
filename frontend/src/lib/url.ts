@@ -81,6 +81,19 @@ const decodePunycodeHost = (host: string) => host
   .map(decodePunycodeLabel)
   .join(".");
 
+const hostFromUrl = (url: string) => {
+  try {
+    const parsed = new URL(url.startsWith("http") ? url : `https://${url}`);
+    return parsed.hostname.toLowerCase();
+  } catch {
+    return "";
+  }
+};
+
+export const isYandexBusinessSite = (url: string) => hostFromUrl(url).endsWith(".clients.site");
+
+export const isTildaSite = (url: string) => hostFromUrl(url).endsWith(".tilda.ws");
+
 export const formatDisplayUrl = (url: string) => {
   try {
     const parsed = new URL(url.startsWith("http") ? url : `https://${url}`);
