@@ -47,7 +47,7 @@ export function SourcesTab({ preferences, onPreferencesChange }: SourcesTabProps
       initial={{ opacity: 0, y: 10 }}
       animate={{ opacity: 1, y: 0 }}
       transition={{ duration: 0.3 }}
-      className="flex min-h-0 flex-1 flex-col gap-5 overflow-y-auto pr-2 pb-4"
+      className="flex min-h-0 max-w-xl flex-1 flex-col gap-5 overflow-y-auto pr-1 pb-1"
     >
       <div>
         <h3 className="text-lg font-semibold text-slate-900">Источники</h3>
@@ -56,28 +56,29 @@ export function SourcesTab({ preferences, onPreferencesChange }: SourcesTabProps
         </p>
       </div>
 
-      <div className="grid max-w-2xl gap-4">
-        <div className="space-y-2">
-          <Label className="text-sm font-medium text-slate-700">Глубина сканирования</Label>
-          <Input
-            type="number"
-            min={1}
-            max={20}
-            value={maxScanMultiplier}
-            onChange={(event) => setMaxScanMultiplier(Number(event.target.value))}
-            className="w-32 bg-white"
-          />
-          <p className="text-xs text-slate-500">
-            Поле "Карточек / запрос" умножается на это число, минимум 30 и максимум 100 просмотренных позиций.
-          </p>
+      <div className="rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
+        <div className="space-y-5">
+          <div className="space-y-2">
+            <Label className="text-sm font-medium text-slate-700">Глубина сканирования</Label>
+            <Input
+              type="number"
+              min={1}
+              max={20}
+              value={maxScanMultiplier}
+              onChange={(event) => setMaxScanMultiplier(Number(event.target.value))}
+              className="w-32 bg-white"
+            />
+            <p className="text-xs leading-5 text-slate-500">
+              Поле "Карточек / запрос" умножается на это число, минимум 30 и максимум 100 просмотренных позиций.
+            </p>
+          </div>
+
+          <div className="flex justify-end border-t border-slate-100 pt-4">
+            <Button onClick={save} disabled={isSaving} className="bg-indigo-600 text-white hover:bg-indigo-700">
+              {isSaving ? 'Сохранение...' : 'Сохранить настройки'}
+            </Button>
+          </div>
         </div>
-
-      </div>
-
-      <div className="flex justify-end">
-        <Button onClick={save} disabled={isSaving} className="bg-indigo-600 text-white hover:bg-indigo-700">
-          {isSaving ? 'Сохранение...' : 'Сохранить настройки'}
-        </Button>
       </div>
     </motion.div>
   )

@@ -75,7 +75,7 @@ export function DatabaseTab() {
       initial={{ opacity: 0, y: 10 }}
       animate={{ opacity: 1, y: 0 }}
       transition={{ duration: 0.3 }}
-      className="flex flex-col gap-4 flex-1 overflow-y-auto min-h-0 pr-2 pb-4"
+      className="flex min-h-0 max-w-3xl flex-1 flex-col gap-5 overflow-y-auto pr-1 pb-1"
     >
       <div>
         <h3 className="text-lg font-semibold text-slate-900">Управление базой данных</h3>
@@ -84,12 +84,12 @@ export function DatabaseTab() {
         </p>
       </div>
 
-      <div className="grid gap-4 mt-2">
-        <Card className="border-slate-200 shadow-sm">
-          <CardContent className="p-4 flex flex-col gap-3">
+      <div className="grid gap-4">
+        <Card className="border-slate-200 bg-white shadow-sm">
+          <CardContent className="flex flex-col gap-3 p-5">
             <h4 className="font-medium text-slate-900">Экспорт / Импорт БД</h4>
             <p className="text-sm text-slate-500 mb-2">Скачать базу данных для бекапа или загрузить резервную копию.</p>
-            <div className="flex gap-3">
+            <div className="flex flex-col gap-2 sm:flex-row sm:gap-3">
               <Button onClick={handleExportDB} className="flex-1 bg-slate-900 text-white hover:bg-slate-800">
                 <Download className="size-4 mr-2" />
                 Скачать (.db)
@@ -103,12 +103,12 @@ export function DatabaseTab() {
           </CardContent>
         </Card>
 
-        <Card className="border-red-200 shadow-sm bg-red-50/50">
-          <CardContent className="p-4 flex flex-col gap-3">
-            <h4 className="font-medium text-red-900 flex items-center gap-2">
+        <Card className="border-red-200 bg-red-50 shadow-sm">
+          <CardContent className="flex flex-col gap-3 p-5">
+            <h4 className="flex items-center gap-2 font-medium text-red-950">
               <AlertTriangle className="size-4" /> Опасная зона
             </h4>
-            <p className="text-sm text-red-800/80 mb-2">
+            <p className="mb-2 text-sm text-red-900/80">
               Полный сброс БД. Все спарсенные данные, организации, лиды и история будут безвозвратно удалены.
             </p>
             <AlertDialog>

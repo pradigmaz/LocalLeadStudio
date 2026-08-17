@@ -31,17 +31,15 @@ export function SettingsDialog({ preferences, onPreferencesChange }: SettingsDia
         </Button>
       </DialogTrigger>
 
-      {/* Широкая модалка с кастомным макетом */}
-      <DialogContent className="max-w-[1400px]! w-[95vw] h-[85vh] p-0 flex flex-col overflow-hidden bg-slate-50 gap-0">
-        <DialogHeader className="px-6 py-4 border-b bg-white shrink-0">
-          <DialogTitle className="text-xl">Настройки</DialogTitle>
+      <DialogContent className="flex h-[min(680px,calc(100vh-2rem))] w-[calc(100vw-2rem)] max-w-5xl! flex-col gap-0 overflow-hidden border-slate-200 bg-slate-50 p-0 shadow-2xl">
+        <DialogHeader className="shrink-0 border-b border-slate-200 bg-white px-5 py-4 sm:px-6">
+          <DialogTitle className="text-lg">Настройки</DialogTitle>
         </DialogHeader>
 
         <div className="flex flex-1 min-h-0 overflow-hidden">
           <SettingsSidebar activeTab={activeTab} onTabChange={setActiveTab} />
 
-          {/* Контентная область */}
-          <div className="flex-1 min-w-0 flex flex-col overflow-hidden bg-white p-6 relative">
+          <div className="relative flex min-w-0 flex-1 flex-col overflow-hidden bg-slate-100/80 p-4 sm:p-6">
             <Suspense fallback={<div className="text-sm text-slate-500">Загрузка раздела...</div>}>
               {activeTab === 'blacklist' && <BlacklistTab />}
               {activeTab === 'sources' && (
