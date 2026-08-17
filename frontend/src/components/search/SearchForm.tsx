@@ -19,11 +19,10 @@ interface SearchFormProps {
   preferences: ProviderPreferences | null
 }
 
-const FIELD_LABELS = [
-  ["sites", "Сайты"],
-  ["socials", "Соцсети"],
-  ["phones", "Телефоны"],
-  ["photos", "Фото"],
+const FIELD_OPTIONS = [
+  ["sites", "Сайт", "Ссылка на сайт компании"],
+  ["phones", "Телефоны", "Номера из карточки"],
+  ["photos", "Фото", "Ссылки на фотографии"],
 ] as const
 
 const MAX_SAFE_QUERIES = 40
@@ -36,7 +35,6 @@ const defaultBuilderState: BuilderState = {
   cities: [],
   niches: [],
 }
-
 const defaultConfig = (preferences?: ProviderPreferences | null): RunConfig => ({
   queries: "",
   runName: "lead_search",
@@ -49,13 +47,12 @@ const defaultConfig = (preferences?: ProviderPreferences | null): RunConfig => (
   skipWithSite: false,
   keepSitesForRedesign: true,
   requirePhotos: false,
-  downloadPhotos: true,
-  fields_to_parse: ["sites", "socials", "phones", "photos"],
+  downloadPhotos: false,
+  fields_to_parse: [],
   providerPriority: preferences?.provider_priority ?? "yandex",
   enabledProviders: preferences?.enabled_providers?.length ? preferences.enabled_providers : DEFAULT_ENABLED_PROVIDERS,
   max_scan_multiplier: preferences?.max_scan_multiplier ?? 5,
 })
-
 const normalizeQueryLine = (line: string) => line.replace(/\s+/g, " ").trim()
 const clampNumber = (value: number, min: number, max: number) => Math.max(min, Math.min(max, Number.isFinite(value) ? value : min))
 
@@ -99,6 +96,8 @@ export function SearchForm({ onRun, isLoading, preferences }: SearchFormProps) {
   const manualStats = useMemo(() => buildQueryStats(config.queries), [config.queries])
   const manualQueries = manualStats.unique.join("\n")
   const requestedQueries = activeTab === "builder" ? builderQueries : manualQueries
+  const selectedFields = (config.fields_to_parse ?? []).filter((field) => field !== "socials")
+  const shouldSavePhotos = selectedFields.includes("photos")
   const safeMaxQueries = clampNumber(config.maxQueries, 1, MAX_SAFE_QUERIES)
   const requestedQueryCount = requestedQueries.split("\n").filter((query) => query.trim()).length
   const limitedQueries = requestedQueries.split("\n").filter((query) => query.trim()).slice(0, safeMaxQueries).join("\n")
@@ -124,17 +123,20 @@ export function SearchForm({ onRun, isLoading, preferences }: SearchFormProps) {
 
   const toggleField = (field: string, checked: boolean) => {
     setConfig((prev) => {
-      const fields = new Set(prev.fields_to_parse ?? [])
+      const fields = new Set((prev.fields_to_parse ?? []).filter((item) => item !== "socials"))
       if (checked) fields.add(field)
       else fields.delete(field)
-      return { ...prev, fields_to_parse: Array.from(fields) }
+      return {
+        ...prev,
+        fields_to_parse: Array.from(fields),
+        downloadPhotos: field === "photos" && !checked ? false : prev.downloadPhotos,
+      }
     })
   }
 
   const cleanManualQueries = () => {
     handleChange("queries", manualQueries)
   }
-
   return (
     <div className="flex h-full min-h-0 flex-col bg-slate-50/50">
       <div className="shrink-0 border-b bg-white p-4">
@@ -199,81 +201,128 @@ export function SearchForm({ onRun, isLoading, preferences }: SearchFormProps) {
                 Параметры сбора
               </span>
               <Badge variant="secondary" className="text-xs">
-                {showParserOptions ? "Скрыть" : "Открыть"}
+                {showParserOptions ? "Скрыть" : "Настроить"}
               </Badge>
             </button>
 
             {showParserOptions && (
-              <div className="mt-3 space-y-3">
-                <div className="grid grid-cols-2 gap-3">
-                  <div className="space-y-1.5">
-                    <Label className="text-xs text-slate-500">Запросов за запуск</Label>
-                    <Input
-                      type="number"
-                      min={1}
-                      max={MAX_SAFE_QUERIES}
-                      value={config.maxQueries}
-                      onChange={(event) => handleChange("maxQueries", Number(event.target.value))}
-                      className="h-8 text-sm"
-                    />
+              <div className="mt-3 space-y-4">
+                <div className="rounded-md border border-slate-200 bg-slate-50/70 p-3">
+                  <div className="flex items-start justify-between gap-3">
+                    <div>
+                      <p className="text-sm font-medium text-slate-800">Что сохранить в карточке</p>
+                      <p className="mt-0.5 text-xs leading-5 text-slate-500">
+                        Соцсети и мессенджеры — обязательный контакт. Ниже выберите дополнительные данные для карточки.
+                      </p>
+                    </div>
+                    <Badge variant="secondary" className="shrink-0 text-[11px]">
+                      {selectedFields.length ? `Дополнительно: ${selectedFields.length}` : "Только обязательное"}
+                    </Badge>
                   </div>
-                  <div className="space-y-1.5">
-                    <Label className="text-xs text-slate-500">Мин. отзывов</Label>
-                    <Input
-                      type="number"
-                      value={config.minReviews}
-                      onChange={(event) => handleChange("minReviews", Number(event.target.value))}
-                      className="h-8 text-sm"
-                    />
+                  <div className="mt-3 flex min-h-14 items-start justify-between gap-3 rounded-md border border-emerald-200 bg-emerald-50/60 px-2.5 py-2 text-xs">
+                    <div>
+                      <p className="font-medium text-slate-800">Соцсети и мессенджеры</p>
+                      <p className="mt-0.5 leading-4 text-slate-600">Собираются всегда. Без публичного канала связи лид не попадёт в базу.</p>
+                    </div>
+                    <Badge variant="secondary" className="shrink-0 border-emerald-200 bg-white text-emerald-800">Обязательно</Badge>
                   </div>
-                  <div className="space-y-1.5">
-                    <Label className="text-xs text-slate-500">Карточек / запрос</Label>
-                    <Input
-                      type="number"
-                      min={1}
-                      max={MAX_SAFE_PER_QUERY}
-                      value={config.maxPerQuery}
-                      onChange={(event) => handleChange("maxPerQuery", Number(event.target.value))}
-                      className="h-8 text-sm"
-                    />
-                  </div>
-                  <div className="space-y-1.5">
-                    <Label className="text-xs text-slate-500">Пауза, сек</Label>
-                    <Input
-                      type="number"
-                      min={MIN_SAFE_DELAY_SECONDS}
-                      max={60}
-                      value={config.requestDelaySeconds}
-                      onChange={(event) => handleChange("requestDelaySeconds", Number(event.target.value))}
-                      className="h-8 text-sm"
-                    />
+                  <div className="mt-3 grid grid-cols-1 gap-2 sm:grid-cols-2">
+                    {FIELD_OPTIONS.map(([field, label, description]) => (
+                      <label key={field} className="flex min-h-14 items-start gap-2 rounded-md border bg-white px-2.5 py-2 text-xs transition-colors hover:bg-slate-50">
+                        <Checkbox
+                          checked={selectedFields.includes(field)}
+                          onCheckedChange={(checked) => toggleField(field, Boolean(checked))}
+                          className="mt-0.5"
+                        />
+                        <span className="min-w-0">
+                          <span className="block font-medium text-slate-800">{label}</span>
+                          <span className="mt-0.5 block leading-4 text-slate-500">{description}</span>
+                        </span>
+                      </label>
+                    ))}
                   </div>
                 </div>
-                <div className="grid grid-cols-2 gap-2">
-                  {FIELD_LABELS.map(([field, label]) => (
-                    <label key={field} className="flex items-center gap-2 rounded-md border px-2 py-1.5 text-xs">
-                      <Checkbox
-                        checked={(config.fields_to_parse ?? []).includes(field)}
-                        onCheckedChange={(checked) => toggleField(field, Boolean(checked))}
+
+                <div className="space-y-2">
+                  <div>
+                    <p className="text-sm font-medium text-slate-800">Ограничения запуска</p>
+                    <p className="mt-0.5 text-xs text-slate-500">Безопасные значения уже выставлены — меняйте только при необходимости.</p>
+                  </div>
+                  <div className="grid grid-cols-2 gap-3">
+                    <div className="space-y-1.5">
+                      <Label className="text-xs text-slate-600">Запросов за запуск</Label>
+                      <Input
+                        type="number"
+                        min={1}
+                        max={MAX_SAFE_QUERIES}
+                        value={config.maxQueries}
+                        onChange={(event) => handleChange("maxQueries", Number(event.target.value))}
+                        className="h-8 text-sm"
                       />
-                      <span>{label}</span>
-                    </label>
-                  ))}
+                      <p className="text-[11px] leading-4 text-slate-500">Сколько ниш × городов запустить за раз.</p>
+                    </div>
+                    <div className="space-y-1.5">
+                      <Label className="text-xs text-slate-600">Минимум отзывов</Label>
+                      <Input
+                        type="number"
+                        value={config.minReviews}
+                        onChange={(event) => handleChange("minReviews", Number(event.target.value))}
+                        className="h-8 text-sm"
+                      />
+                      <p className="text-[11px] leading-4 text-slate-500">Меньшее количество — карточка не попадёт в результат.</p>
+                    </div>
+                    <div className="space-y-1.5">
+                      <Label className="text-xs text-slate-600">Лидов с запроса</Label>
+                      <Input
+                        type="number"
+                        min={1}
+                        max={MAX_SAFE_PER_QUERY}
+                        value={config.maxPerQuery}
+                        onChange={(event) => handleChange("maxPerQuery", Number(event.target.value))}
+                        className="h-8 text-sm"
+                      />
+                      <p className="text-[11px] leading-4 text-slate-500">Максимум подходящих карточек на один запрос.</p>
+                    </div>
+                    <div className="space-y-1.5">
+                      <Label className="text-xs text-slate-600">Пауза между запросами</Label>
+                      <Input
+                        type="number"
+                        min={MIN_SAFE_DELAY_SECONDS}
+                        max={60}
+                        value={config.requestDelaySeconds}
+                        onChange={(event) => handleChange("requestDelaySeconds", Number(event.target.value))}
+                        className="h-8 text-sm"
+                      />
+                      <p className="text-[11px] leading-4 text-slate-500">Не меньше 8 секунд — защита от блокировки.</p>
+                    </div>
+                  </div>
                 </div>
-                <label className="flex items-center gap-2 rounded-md border px-2 py-1.5 text-xs">
-                  <Checkbox
-                    checked={config.downloadPhotos}
-                    onCheckedChange={(checked) => handleChange("downloadPhotos", Boolean(checked))}
-                  />
-                  <span>Скачивать фото</span>
-                </label>
-                <label className="flex items-center gap-2 rounded-md border px-2 py-1.5 text-xs">
-                  <Checkbox
-                    checked={config.requirePhotos}
-                    onCheckedChange={(checked) => handleChange("requirePhotos", Boolean(checked))}
-                  />
-                  <span>Только с фото</span>
-                </label>
+
+                <div className="grid gap-2 border-t pt-3 sm:grid-cols-2">
+                  <label className={`flex min-h-14 items-start gap-2 rounded-md border px-2.5 py-2 text-xs ${shouldSavePhotos ? "bg-white" : "cursor-not-allowed bg-slate-50 text-slate-400"}`}>
+                    <Checkbox
+                      checked={config.downloadPhotos}
+                      disabled={!shouldSavePhotos}
+                      onCheckedChange={(checked) => handleChange("downloadPhotos", Boolean(checked))}
+                      className="mt-0.5"
+                    />
+                    <span>
+                      <span className="block font-medium text-slate-800">Скачать фото в папку лида</span>
+                      <span className="mt-0.5 block leading-4 text-slate-500">Доступно после выбора «Фото».</span>
+                    </span>
+                  </label>
+                  <label className="flex min-h-14 items-start gap-2 rounded-md border bg-white px-2.5 py-2 text-xs transition-colors hover:bg-slate-50">
+                    <Checkbox
+                      checked={config.requirePhotos}
+                      onCheckedChange={(checked) => handleChange("requirePhotos", Boolean(checked))}
+                      className="mt-0.5"
+                    />
+                    <span>
+                      <span className="block font-medium text-slate-800">Только лиды с фотографиями</span>
+                      <span className="mt-0.5 block leading-4 text-slate-500">Карточки без фото не попадут в результат.</span>
+                    </span>
+                  </label>
+                </div>
               </div>
             )}
           </div>

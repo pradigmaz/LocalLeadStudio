@@ -7,7 +7,6 @@ import { getSocialPlatform, type SocialPlatform } from "@/lib/social-platform"
 
 const fadeLeft = { initial: { opacity: 0, x: -12 }, animate: { opacity: 1, x: 0 } };
 const fadeRight = { initial: { opacity: 0, x: 12 }, animate: { opacity: 1, x: 0 } };
-const fadeUp = { initial: { opacity: 0, y: 10 }, animate: { opacity: 1, y: 0 } };
 
 const SOCIAL_LABELS: Record<SocialPlatform, string> = {
   vk: "VK",
@@ -58,8 +57,6 @@ const getSourceLabel = (source: string) => {
   if (source === 'yandex') return 'Открыть в Яндекс';
   return 'Открыть источник';
 };
-
-const getReasonText = (reason: string) => reason.replace(/^Парсинг\s+2gis:\s*/i, 'Поисковый запрос: ');
 
 interface LeadModalInfoGridProps {
   lead: Lead;
@@ -219,17 +216,6 @@ export function LeadModalInfoGrid({
             <FolderOpen className="ml-2 size-4" />
           </Button>
         </motion.div>
-
-        {lead.reason && (
-          <motion.div
-            className="bg-orange-50 border border-orange-200 text-orange-900 p-4 rounded-lg"
-            {...fadeUp}
-            transition={{ duration: 0.2, delay: 0.09 }}
-          >
-            <h4 className="text-xs font-semibold uppercase tracking-wider mb-2">Источник / Запрос</h4>
-            <p className="text-sm font-medium">{getReasonText(lead.reason)}</p>
-          </motion.div>
-        )}
       </div>
     </div>
   );
