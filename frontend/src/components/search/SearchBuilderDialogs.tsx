@@ -50,6 +50,7 @@ export function RegionDialog({ open, onOpenChange, regions, selectedRegionNames,
       <DialogContent className="max-h-[82vh] p-0 sm:max-w-[460px]">
         <DialogHeader className="border-b px-4 py-3">
           <DialogTitle className="text-base">Выбор региона</DialogTitle>
+          <p className="text-xs text-slate-500">Можно выбрать несколько регионов.</p>
         </DialogHeader>
         <div className="p-4">
           <SearchInput value={search} onChange={onSearchChange} placeholder="Поиск региона..." />

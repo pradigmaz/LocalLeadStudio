@@ -3,13 +3,12 @@ import { Building2, MapPin } from "lucide-react"
 import { Checkbox } from "@/components/ui/checkbox"
 import type { Area, BuilderState } from "./searchBuilderTypes"
 import { EntityDialog, RegionDialog, SummaryCard } from "./SearchBuilderDialogs"
+import { visibleCityNames } from "./city-search"
 
 interface SearchBuilderPanelProps {
   value: BuilderState
   onChange: (value: BuilderState) => void
 }
-
-const uniqueNames = (areas: Area[]) => Array.from(new Set(areas.map((area) => area.name).filter(Boolean)))
 
 export function SearchBuilderPanel({ value, onChange }: SearchBuilderPanelProps) {
   const [regions, setRegions] = useState<Area[]>([])
@@ -33,6 +32,7 @@ export function SearchBuilderPanel({ value, onChange }: SearchBuilderPanelProps)
   const normalizedRegionSearch = regionSearch.trim().toLowerCase()
   const normalizedCitySearch = citySearch.trim().toLowerCase()
   const normalizedCategorySearch = categorySearch.trim().toLowerCase()
+  const hasSelectedRegions = value.regionNames.length > 0
 
   const visibleRegions = useMemo(() => (
     regions
@@ -40,10 +40,12 @@ export function SearchBuilderPanel({ value, onChange }: SearchBuilderPanelProps)
       .slice(0, 80)
   ), [normalizedRegionSearch, regions])
 
-  const visibleCities = useMemo(() => {
-    const source = normalizedCitySearch ? citySearchResults : regionCities
-    return uniqueNames(source).slice(0, 100)
-  }, [citySearchResults, normalizedCitySearch, regionCities])
+  const visibleCities = useMemo(() => visibleCityNames({
+    scopedAreas: regionCities,
+    globalAreas: citySearchResults,
+    hasSelectedRegions,
+    query: citySearch,
+  }), [citySearch, citySearchResults, hasSelectedRegions, regionCities])
 
   const visibleCategories = useMemo(() => (
     categories
@@ -109,7 +111,7 @@ export function SearchBuilderPanel({ value, onChange }: SearchBuilderPanelProps)
   }, [selectedRegionIds, smallParam])
 
   useEffect(() => {
-    if (!normalizedCitySearch) {
+    if (!normalizedCitySearch || hasSelectedRegions) {
       queueMicrotask(() => setCitySearchResults([]))
       return
     }
@@ -136,7 +138,7 @@ export function SearchBuilderPanel({ value, onChange }: SearchBuilderPanelProps)
       window.clearTimeout(timer)
       controller.abort()
     }
-  }, [normalizedCitySearch, smallParam])
+  }, [hasSelectedRegions, normalizedCitySearch, smallParam])
 
   const update = (patch: Partial<BuilderState>) => onChange({ ...value, ...patch })
   const toggleCity = (city: string) => update({
@@ -151,10 +153,11 @@ export function SearchBuilderPanel({ value, onChange }: SearchBuilderPanelProps)
   })
 
   const toggleRegion = (region: Area) => {
-    const nextNames = value.regionNames.includes(region.name)
-      ? value.regionNames.filter((name) => name !== region.name)
-      : [...value.regionNames, region.name]
-    update({ regionNames: nextNames, cities: [] })
+    const isAdding = !value.regionNames.includes(region.name)
+    const nextNames = isAdding
+      ? [...value.regionNames, region.name]
+      : value.regionNames.filter((name) => name !== region.name)
+    update({ regionNames: nextNames, cities: isAdding ? value.cities : [] })
     setCitySearch("")
   }
 
