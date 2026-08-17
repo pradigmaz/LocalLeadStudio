@@ -29,7 +29,7 @@ const FIELD_LABELS = [
 const MAX_SAFE_QUERIES = 40
 const MAX_SAFE_PER_QUERY = 10
 const MIN_SAFE_DELAY_SECONDS = 8
-const DEFAULT_ENABLED_PROVIDERS: ProviderSource[] = ["yandex", "2gis"]
+const DEFAULT_ENABLED_PROVIDERS: ProviderSource[] = ["yandex"]
 
 const defaultBuilderState: BuilderState = {
   regionNames: [],
@@ -44,7 +44,7 @@ const defaultConfig = (preferences?: ProviderPreferences | null): RunConfig => (
   maxPerQuery: 10,
   requestDelaySeconds: MIN_SAFE_DELAY_SECONDS,
   minReviews: 1,
-  outputDir: "lead_studio_data",
+  outputDir: "",
   excludeChains: localStorage.getItem("yamap_blacklist") || "Пятерочка, Магнит, Перекресток, Сбербанк, ВТБ",
   skipWithSite: false,
   keepSitesForRedesign: true,
@@ -282,7 +282,7 @@ export function SearchForm({ onRun, isLoading, preferences }: SearchFormProps) {
 
       <div className="mt-auto flex shrink-0 flex-col items-center gap-3 border-t bg-white p-4">
         <div className="w-full rounded-md border bg-slate-50 px-2.5 py-1.5 text-center text-[11px] text-slate-600">
-          {queryCount} запросов к сбору{requestedQueryCount > queryCount ? ` из ${requestedQueryCount}` : ""}. Источник: {runConfig.providerPriority === "2gis" ? "2GIS" : "Яндекс"}.
+          {queryCount} запросов к сбору{requestedQueryCount > queryCount ? ` из ${requestedQueryCount}` : ""}. Источник: Яндекс.
         </div>
         <Button
           size="lg"

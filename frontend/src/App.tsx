@@ -5,10 +5,8 @@ import { LeadsTable } from '@/components/leads/LeadsTable'
 import { LeadModal } from '@/components/leads/LeadModal'
 import { SettingsDialog } from '@/components/settings/SettingsDialog'
 import { Badge } from "@/components/ui/badge"
-import { Button } from "@/components/ui/button"
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import { Toaster } from "@/components/ui/sonner"
-import type { Lead, LeadStatus, ProviderPreferences, ProviderSource, RunConfig, RunJobStatus } from '@/types'
+import type { Lead, LeadStatus, ProviderPreferences, RunConfig, RunJobStatus } from '@/types'
 import { NumberTicker } from "@/components/ui/number-ticker"
 import { getErrorMessage, JSON_ACTION_HEADERS, LOCAL_ACTION_HEADERS, readJson } from "@/lib/api"
 
@@ -19,16 +17,6 @@ interface LeadsResponse {
 
 const EMPTY_JOB_STATUS: RunJobStatus = { status: 'IDLE' };
 const TERMINAL_JOB_STATUSES = new Set(['FINISHED', 'FAILED', 'CANCELLED', 'RATE_LIMITED']);
-const DEFAULT_PREFERENCES: ProviderPreferences = {
-  provider_priority: null,
-  enabled_providers: ['yandex', '2gis'],
-  max_scan_multiplier: 5,
-  twogis_mode: 'browser',
-  twogis_browser: 'auto',
-  twogis_browser_path: '',
-  twogis_quiet_mode: true,
-};
-
 function App() {
   const [viewState, setViewState] = useState<'IDLE' | 'LOADING' | 'RESULTS'>('IDLE');
   const [leads, setLeads] = useState<Lead[]>([]);
@@ -36,7 +24,6 @@ function App() {
   const [error, setError] = useState<string | null>(null);
   const [jobStatus, setJobStatus] = useState<RunJobStatus>(EMPTY_JOB_STATUS);
   const [preferences, setPreferences] = useState<ProviderPreferences | null>(null);
-  const [showFirstRun, setShowFirstRun] = useState(false);
 
   const loadLeads = useCallback(async () => {
     const leadsResponse = await fetch('/api/leads');
@@ -66,33 +53,9 @@ function App() {
       .then(res => readJson<ProviderPreferences>(res))
       .then((nextPreferences) => {
         setPreferences(nextPreferences);
-        setShowFirstRun(!nextPreferences.provider_priority);
       })
       .catch(err => console.error("Failed to fetch preferences:", err));
   }, []);
-
-  const saveProviderPriority = async (provider: ProviderSource) => {
-    try {
-      const response = await fetch('/api/settings/preferences', {
-        method: 'POST',
-        headers: JSON_ACTION_HEADERS,
-        body: JSON.stringify({
-          provider_priority: provider,
-          enabled_providers: preferences?.enabled_providers?.length ? preferences.enabled_providers : DEFAULT_PREFERENCES.enabled_providers,
-          max_scan_multiplier: preferences?.max_scan_multiplier ?? DEFAULT_PREFERENCES.max_scan_multiplier,
-          twogis_mode: preferences?.twogis_mode ?? DEFAULT_PREFERENCES.twogis_mode,
-          twogis_browser: preferences?.twogis_browser ?? DEFAULT_PREFERENCES.twogis_browser,
-          twogis_browser_path: preferences?.twogis_browser_path ?? DEFAULT_PREFERENCES.twogis_browser_path,
-          twogis_quiet_mode: preferences?.twogis_quiet_mode ?? DEFAULT_PREFERENCES.twogis_quiet_mode,
-        }),
-      });
-      const nextPreferences = await readJson<ProviderPreferences>(response);
-      setPreferences(nextPreferences);
-      setShowFirstRun(false);
-    } catch (err: unknown) {
-      setError(getErrorMessage(err));
-    }
-  };
 
   useEffect(() => {
     if (viewState !== 'LOADING') return;
@@ -318,28 +281,6 @@ function App() {
         onPriorityChange={handlePriorityChange}
         onLeadDeleted={handleLeadDeleted}
       />
-      <Dialog
-        open={showFirstRun}
-        onOpenChange={(open) => {
-          if (open || preferences?.provider_priority) setShowFirstRun(open)
-        }}
-      >
-        <DialogContent className="max-w-[520px]">
-          <DialogHeader>
-            <DialogTitle>Приоритет источника</DialogTitle>
-          </DialogHeader>
-          <div className="grid grid-cols-2 gap-3">
-            <Button variant="outline" className="h-20 flex-col gap-1" onClick={() => void saveProviderPriority('yandex')}>
-              <span className="text-base font-semibold">Яндекс</span>
-              <span className="text-xs text-muted-foreground">Основная карточка от Яндекса</span>
-            </Button>
-            <Button variant="outline" className="h-20 flex-col gap-1" onClick={() => void saveProviderPriority('2gis')}>
-              <span className="text-base font-semibold">2GIS</span>
-              <span className="text-xs text-muted-foreground">Основная карточка от 2GIS</span>
-            </Button>
-          </div>
-        </DialogContent>
-      </Dialog>
     </div>
   )
 }

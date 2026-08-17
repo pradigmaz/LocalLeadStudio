@@ -36,7 +36,6 @@ from lead_studio.adapters.sqlite_repo import SQLiteRepo
 from lead_studio.job_manager import JobManager
 from lead_studio.providers.base import LeadProvider, ProviderBlockedError, ProviderCandidate
 from lead_studio.providers.yandex import YandexProvider
-from lead_studio.providers.twogis import TwogisBrowserBackend, TwogisProvider
 
 
 def organization_data_from_lead(lead: dict) -> dict:
@@ -68,25 +67,17 @@ def organization_data_from_lead(lead: dict) -> dict:
 
 
 def build_providers(config: dict) -> list[LeadProvider]:
-    priority = config.get("providerPriority") or config.get("provider_priority") or "yandex"
-    enabled = config.get("enabledProviders") or config.get("enabled_providers") or ["yandex", "2gis"]
-    enabled = [source for source in enabled if source in {"yandex", "2gis"}]
-    if not enabled:
-        enabled = ["yandex"]
+    del config
+    return [YandexProvider(search_items, lead_from_item)]
 
-    provider_map: dict[str, LeadProvider] = {
-        "yandex": YandexProvider(search_items, lead_from_item),
-        "2gis": TwogisProvider(TwogisBrowserBackend(
-            browser=str(config.get("twogis_browser") or "auto"),
-            browser_path=str(config.get("twogis_browser_path") or ""),
-            quiet=bool(config.get("twogis_quiet_mode", True)),
-        )),
-    }
-    ordered = []
-    if priority in enabled:
-        ordered.append(priority)
-    ordered.extend(source for source in enabled if source != priority)
-    return [provider_map[source] for source in ordered]
+
+def resolve_output_dir(config: dict) -> Path:
+    raw_output_dir = str(config.get("outputDir") or "").strip()
+    if not raw_output_dir or raw_output_dir == "lead_studio_data":
+        return DATA_DIR
+
+    output_dir = Path(raw_output_dir)
+    return output_dir if output_dir.is_absolute() else PROJECT_ROOT / output_dir
 
 
 def default_max_scan(max_per_query: int, config: dict) -> int:
@@ -193,9 +184,7 @@ def run_job(
     query_limit = clamp_int(config.get("maxQueries"), MAX_QUERY_LINES, 1, MAX_QUERY_LINES)
     queries = raw_queries[:query_limit]
     run_name = slug(config.get("runName") or "yamap_run")
-    output_dir = Path(config.get("outputDir") or DATA_DIR)
-    if not output_dir.is_absolute():
-        output_dir = PROJECT_ROOT / output_dir
+    output_dir = resolve_output_dir(config)
     output_root = output_dir / "runs" / run_name
     output_root.mkdir(parents=True, exist_ok=True)
     user_chain_words = [part.strip().lower() for part in (config.get("excludeChains") or "").split(",")]

@@ -12,7 +12,12 @@ def is_lead_folder(path: Path) -> bool:
 
 
 def lead_folder_roots() -> tuple[Path, ...]:
-    return (DATA_DIR / "runs", LEGACY_DATA_DIR / "runs", PROJECT_ROOT.parent / "yamap_landing_runs")
+    return (
+        DATA_DIR / "runs",
+        LEGACY_DATA_DIR / "runs",
+        PROJECT_ROOT / "lead_studio_data" / "runs",  # pre-portable card folders
+        PROJECT_ROOT.parent / "yamap_landing_runs",
+    )
 
 
 def is_safe_lead_folder(path: Path) -> bool:

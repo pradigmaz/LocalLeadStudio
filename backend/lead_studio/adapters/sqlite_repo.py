@@ -603,8 +603,8 @@ class SQLiteRepo:
 
     def get_preferences(self) -> Dict[str, Any]:
         defaults = {
-            "provider_priority": None,
-            "enabled_providers": ["yandex", "2gis"],
+            "provider_priority": "yandex",
+            "enabled_providers": ["yandex"],
             "max_scan_multiplier": 5,
             "twogis_mode": "browser",
             "twogis_browser": "auto",
@@ -619,15 +619,16 @@ class SQLiteRepo:
                 stored = json.loads(row["value_json"])
             except (TypeError, ValueError):
                 stored = {}
-            return {**defaults, **stored}
+            preferences = {**defaults, **stored}
+            preferences["provider_priority"] = "yandex"
+            preferences["enabled_providers"] = ["yandex"]
+            return preferences
 
     def save_preferences(self, preferences: Dict[str, Any]) -> Dict[str, Any]:
         current = self.get_preferences()
         next_value = {**current, **preferences}
-        providers = next_value.get("enabled_providers") or ["yandex", "2gis"]
-        next_value["enabled_providers"] = [p for p in providers if p in {"yandex", "2gis"}] or ["yandex"]
-        if next_value.get("provider_priority") not in {"yandex", "2gis"}:
-            next_value["provider_priority"] = "yandex"
+        next_value["provider_priority"] = "yandex"
+        next_value["enabled_providers"] = ["yandex"]
         valid_browsers = {
             "auto", "chrome", "edge", "yandex", "opera", "opera_gx",
             "brave", "vivaldi", "firefox", "safari", "custom",

@@ -1,7 +1,8 @@
-const { app, BrowserWindow } = require('electron');
+const { app, BrowserWindow, shell } = require('electron');
 const { spawn } = require('child_process');
 const net = require('net');
 const path = require('path');
+const { handleExternalWindow } = require('./external-links');
 const { waitForPort } = require('./wait-port');
 
 const PORT = 8765;
@@ -75,6 +76,7 @@ async function createWindow() {
     await waitForPort(PORT);
     win.loadURL(`http://127.0.0.1:${PORT}`);
     win.webContents.on('did-finish-load', () => win.webContents.setZoomFactor(1));
+    win.webContents.setWindowOpenHandler(({ url }) => handleExternalWindow(url, shell.openExternal));
   } catch (err) {
     win.loadURL('data:text/html,' + encodeURIComponent(
       `<h2 style="font-family:sans-serif;padding:2rem">Backend не запустился: ${err.message}.<br>Проверь, что установлен Python и зависимости backend.</h2>`

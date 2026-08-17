@@ -19,9 +19,10 @@ const getSocialLabel = (url: string) => {
 
 const getSourceLabel = (source: string) => {
   if (source === 'yandex') return 'Открыть в Яндекс';
-  if (source === '2gis') return 'Открыть в 2GIS';
   return 'Открыть источник';
 };
+
+const getReasonText = (reason: string) => reason.replace(/^Парсинг\s+2gis:\s*/i, 'Поисковый запрос: ');
 
 interface LeadModalInfoGridProps {
   lead: Lead;
@@ -41,7 +42,7 @@ export function LeadModalInfoGrid({
   onOpenLeadFolder,
 }: LeadModalInfoGridProps) {
   const sourceLinks = lead.sources && lead.sources.length > 0
-    ? lead.sources.filter((source) => source.source_url)
+    ? lead.sources.filter((source) => source.source !== '2gis' && source.source_url)
     : lead.source_url
       ? [{ source: 'yandex', source_url: lead.source_url }]
       : [];
@@ -189,7 +190,7 @@ export function LeadModalInfoGrid({
             transition={{ duration: 0.2, delay: 0.09 }}
           >
             <h4 className="text-xs font-semibold uppercase tracking-wider mb-2">Источник / Запрос</h4>
-            <p className="text-sm font-medium">{lead.reason}</p>
+            <p className="text-sm font-medium">{getReasonText(lead.reason)}</p>
           </motion.div>
         )}
       </div>

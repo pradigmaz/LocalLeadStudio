@@ -44,7 +44,7 @@ export function ParsingStatus({ job, onCancel }: ParsingStatusProps) {
 
   const isStopping = job.status === "CANCEL_REQUESTED"
   const currentQuery = job.current_query?.trim() || "Подготовка запроса"
-  const providerLabel = job.current_provider === "2gis" ? "2GIS" : job.current_provider === "yandex" ? "Яндекс" : "Источник"
+  const providerLabel = job.current_provider === "yandex" ? "Яндекс" : "Источник"
 
   const handleCancel = async () => {
     setIsCancelling(true)
@@ -87,9 +87,9 @@ export function ParsingStatus({ job, onCancel }: ParsingStatusProps) {
             <span>доп. {job.enriched_count || 0}</span>
             <span>без изм. {job.existing_count || 0}</span>
           </div>
-          {job.blocked_source && (
+          {job.blocked_source && job.blocked_source !== "2gis" && (
             <div className="mt-0.5 truncate text-xs font-medium text-amber-700">
-              Блокировка источника: {job.blocked_source === "2gis" ? "2GIS" : job.blocked_source}
+              Блокировка источника: {job.blocked_source}
             </div>
           )}
         </div>
