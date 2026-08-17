@@ -216,7 +216,9 @@ export function LeadsTable({ leads, onLeadClick }: LeadsTableProps) {
               {sortedLeads.map((lead) => (
                 <tr
                   key={lead.id}
-                  className="cursor-pointer hover:bg-slate-50/60 hover:shadow-[0_2px_10px_rgb(0,0,0,0.02)] transition-all duration-300 ease-[cubic-bezier(0.32,0.72,0,1)] group border-transparent hover:border-slate-100/50"
+                  className={`cursor-pointer transition-all duration-300 ease-[cubic-bezier(0.32,0.72,0,1)] group border-transparent ${isViewedNewLead(lead)
+                    ? 'bg-slate-50/80 grayscale opacity-75 hover:bg-slate-100/80 hover:opacity-100 hover:shadow-[0_2px_10px_rgb(0,0,0,0.02)] hover:border-slate-200/70'
+                    : 'hover:bg-slate-50/60 hover:shadow-[0_2px_10px_rgb(0,0,0,0.02)] hover:border-slate-100/50'}`}
                   onClick={() => onLeadClick(lead)}
                 >
                 <TableCell className="font-medium align-middle py-4">
