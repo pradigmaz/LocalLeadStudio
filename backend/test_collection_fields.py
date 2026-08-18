@@ -173,6 +173,87 @@ class CollectionFieldsTests(unittest.TestCase):
                 self.assertEqual(repo.get_all_leads_view(), [])
                 self.assertEqual(skipped[-1]["reason"], "нет соцсетей или мессенджеров")
 
+    def test_known_card_is_skipped_by_default_without_enrichment(self):
+        config = {
+            "skipWithSite": False,
+            "keepSitesForRedesign": True,
+            "requirePhotos": False,
+            "minReviews": 0,
+            "downloadPhotos": False,
+        }
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            repo = SQLiteRepo(root / "app.db")
+            first_run = repo.create_run({"name": "first", "output_folder": str(root / "runs" / "first")})
+            first_stats = {
+                "scan_count": 0, "duplicate_count": 0, "created_count": 0, "enriched_count": 0,
+                "existing_count": 0, "saved_count": 0, "skipped_count": 0, "error_count": 0,
+            }
+            process_candidate(Candidate(), "Воронеж кафе", config, repo, first_run, root / "runs" / "first", [], None, set(), [], [], first_stats)
+
+            second_run = repo.create_run({"name": "second", "output_folder": str(root / "runs" / "second")})
+            stats = {
+                "scan_count": 0, "duplicate_count": 0, "created_count": 0, "enriched_count": 0,
+                "existing_count": 0, "saved_count": 0, "skipped_count": 0, "error_count": 0,
+            }
+            saved: list[dict] = []
+            skipped: list[dict] = []
+
+            kept = process_candidate(
+                Candidate(websites=["https://new.example.test"]), "Воронеж кафе", config, repo, second_run,
+                root / "runs" / "second", [], None, set(), saved, skipped, stats,
+            )
+
+            self.assertFalse(kept)
+            self.assertEqual(saved, [])
+            self.assertEqual(stats["existing_count"], 1)
+            self.assertEqual(stats["enriched_count"], 0)
+            self.assertEqual(stats["saved_count"], 0)
+            self.assertEqual(skipped[-1]["reason"], "уже в базе")
+            self.assertEqual(repo.get_all_leads_view()[0]["websites"], ["https://example.test"])
+            with repo.get_connection() as conn:
+                result = conn.execute("SELECT result_status, skip_reason FROM run_results WHERE run_id = ?", (second_run,)).fetchone()
+            self.assertEqual(dict(result), {"result_status": "EXISTING_SKIPPED", "skip_reason": "уже в базе"})
+
+    def test_refresh_known_card_enriches_when_enabled(self):
+        config = {
+            "skipWithSite": False,
+            "keepSitesForRedesign": True,
+            "requirePhotos": False,
+            "minReviews": 0,
+            "downloadPhotos": False,
+            "refreshKnown": True,
+        }
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            repo = SQLiteRepo(root / "app.db")
+            first_run = repo.create_run({"name": "first", "output_folder": str(root / "runs" / "first")})
+            first_stats = {
+                "scan_count": 0, "duplicate_count": 0, "created_count": 0, "enriched_count": 0,
+                "existing_count": 0, "saved_count": 0, "skipped_count": 0, "error_count": 0,
+            }
+            process_candidate(Candidate(), "Воронеж кафе", config, repo, first_run, root / "runs" / "first", [], None, set(), [], [], first_stats)
+
+            second_run = repo.create_run({"name": "second", "output_folder": str(root / "runs" / "second")})
+            stats = {
+                "scan_count": 0, "duplicate_count": 0, "created_count": 0, "enriched_count": 0,
+                "existing_count": 0, "saved_count": 0, "skipped_count": 0, "error_count": 0,
+            }
+
+            kept = process_candidate(
+                Candidate(websites=["https://new.example.test"]), "Воронеж кафе", config, repo, second_run,
+                root / "runs" / "second", [], None, set(), [], [], stats,
+            )
+
+            self.assertTrue(kept)
+            self.assertEqual(stats["enriched_count"], 1)
+            self.assertEqual(stats["existing_count"], 0)
+            self.assertEqual(stats["saved_count"], 1)
+            self.assertEqual(repo.get_all_leads_view()[0]["websites"], ["https://example.test", "https://new.example.test"])
+            with repo.get_connection() as conn:
+                result = conn.execute("SELECT result_status FROM run_results WHERE run_id = ?", (second_run,)).fetchone()
+            self.assertEqual(result["result_status"], "ENRICHED")
+
     def test_clients_site_only_is_saved_as_new_site(self):
         stats = {
             "scan_count": 0,

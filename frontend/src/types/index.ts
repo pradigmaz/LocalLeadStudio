@@ -85,6 +85,7 @@ export interface RunConfig {
   excludeChains: string;
   skipWithSite: boolean;
   keepSitesForRedesign: boolean;
+  refreshKnown: boolean;
   requirePhotos: boolean;
   downloadPhotos: boolean;
   fields_to_parse?: string[];

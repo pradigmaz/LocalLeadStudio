@@ -143,6 +143,20 @@ def process_candidate(
             stats["skipped_count"] += 1
             return False
 
+        if not bool(config.get("refreshKnown")):
+            existing = repo.find_existing_organization(organization_data_from_lead(lead))
+            if existing:
+                stats["existing_count"] += 1
+                skipped.append({"query": query, "name": lead["name"], "reason": "уже в базе"})
+                repo.add_run_result(
+                    run_id,
+                    existing["id"],
+                    f"{candidate.source}:{query}",
+                    "EXISTING_SKIPPED",
+                    skip_reason="уже в базе",
+                )
+                return False
+
         ok, reason = keep_lead(lead, config, chain_words)
         apply_fields_to_parse(lead, fields_to_parse)
         merge_result = repo.merge_organization(organization_data_from_lead(lead), {

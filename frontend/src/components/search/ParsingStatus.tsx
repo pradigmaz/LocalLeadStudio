@@ -85,7 +85,7 @@ export function ParsingStatus({ job, onCancel }: ParsingStatusProps) {
             <span>прсм. {job.scan_count || 0}</span>
             <span>созд. {job.created_count || 0}</span>
             <span>доп. {job.enriched_count || 0}</span>
-            <span>без изм. {job.existing_count || 0}</span>
+            <span>в базе {job.existing_count || 0}</span>
           </div>
           {job.blocked_source && job.blocked_source !== "2gis" && (
             <div className="mt-0.5 truncate text-xs font-medium text-amber-700">

@@ -307,6 +307,10 @@ class SQLiteRepo:
                 "changed_fields": fields[1:],
             }
 
+    def find_existing_organization(self, org_data: Dict[str, Any]) -> Optional[sqlite3.Row]:
+        with self.get_connection() as conn:
+            return self._find_existing_organization(conn, org_data)
+
     def _find_existing_organization(self, conn: sqlite3.Connection, org_data: Dict[str, Any]) -> Optional[sqlite3.Row]:
         source = org_data.get("source", "yandex")
         source_org_id = org_data.get("source_org_id")

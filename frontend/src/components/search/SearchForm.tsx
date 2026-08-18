@@ -22,7 +22,7 @@ interface SearchFormProps {
 const FIELD_OPTIONS = [
   ["sites", "Сайт", "Ссылка на сайт компании"],
   ["phones", "Телефоны", "Номера из карточки"],
-  ["photos", "Фото", "Ссылки на фотографии"],
+  ["photos", "Фото", "Скачать фотографии в папку лида"],
 ] as const
 
 const MAX_SAFE_QUERIES = 40
@@ -46,6 +46,7 @@ const defaultConfig = (preferences?: ProviderPreferences | null): RunConfig => (
   excludeChains: localStorage.getItem("yamap_blacklist") || "Пятерочка, Магнит, Перекресток, Сбербанк, ВТБ",
   skipWithSite: false,
   keepSitesForRedesign: true,
+  refreshKnown: false,
   requirePhotos: false,
   downloadPhotos: false,
   fields_to_parse: [],
@@ -97,7 +98,6 @@ export function SearchForm({ onRun, isLoading, preferences }: SearchFormProps) {
   const manualQueries = manualStats.unique.join("\n")
   const requestedQueries = activeTab === "builder" ? builderQueries : manualQueries
   const selectedFields = (config.fields_to_parse ?? []).filter((field) => field !== "socials")
-  const shouldSavePhotos = selectedFields.includes("photos")
   const safeMaxQueries = clampNumber(config.maxQueries, 1, MAX_SAFE_QUERIES)
   const requestedQueryCount = requestedQueries.split("\n").filter((query) => query.trim()).length
   const limitedQueries = requestedQueries.split("\n").filter((query) => query.trim()).slice(0, safeMaxQueries).join("\n")
@@ -116,6 +116,8 @@ export function SearchForm({ onRun, isLoading, preferences }: SearchFormProps) {
         : DEFAULT_ENABLED_PROVIDERS,
     max_scan_multiplier: preferences?.max_scan_multiplier ?? config.max_scan_multiplier ?? 5,
   }
+  const candidateLimit = queryCount * runConfig.maxPerQuery
+  const resultLabel = config.refreshKnown ? "новых или обновлённых" : "новых"
 
   const handleChange = <K extends keyof RunConfig>(field: K, value: RunConfig[K]) => {
     setConfig((prev) => ({ ...prev, [field]: value }))
@@ -129,7 +131,8 @@ export function SearchForm({ onRun, isLoading, preferences }: SearchFormProps) {
       return {
         ...prev,
         fields_to_parse: Array.from(fields),
-        downloadPhotos: field === "photos" && !checked ? false : prev.downloadPhotos,
+        downloadPhotos: field === "photos" ? checked : prev.downloadPhotos,
+        requirePhotos: field === "photos" && !checked ? false : prev.requirePhotos,
       }
     })
   }
@@ -245,46 +248,52 @@ export function SearchForm({ onRun, isLoading, preferences }: SearchFormProps) {
 
                 <div className="space-y-2">
                   <div>
-                    <p className="text-sm font-medium text-slate-800">Ограничения запуска</p>
-                    <p className="mt-0.5 text-xs text-slate-500">Безопасные значения уже выставлены — меняйте только при необходимости.</p>
+                    <p className="text-sm font-medium text-slate-800">Как формируется результат</p>
+                    <p className="mt-0.5 text-xs text-slate-500">Один запрос — это связка «город + ниша». Настройки ниже задают объём и отбор.</p>
+                  </div>
+                  <div className="rounded-md border border-indigo-100 bg-indigo-50/60 px-2.5 py-2 text-[11px] leading-4 text-slate-700">
+                    <p className="font-medium text-slate-800">В этом запуске: {queryCount} запросов → до {candidateLimit} {resultLabel} карточек.</p>
+                    <p className="mt-1">Итог будет меньше, если попадутся дубли, сети, карточки с малым числом отзывов или без соцсети/мессенджера.</p>
                   </div>
                   <div className="grid grid-cols-2 gap-3">
                     <div className="space-y-1.5">
-                      <Label className="text-xs text-slate-600">Запросов за запуск</Label>
+                      <Label className="text-xs text-slate-600">Сколько запросов выполнить</Label>
                       <Input
                         type="number"
                         min={1}
                         max={MAX_SAFE_QUERIES}
                         value={config.maxQueries}
                         onChange={(event) => handleChange("maxQueries", Number(event.target.value))}
+                        onBlur={() => handleChange("maxQueries", safeMaxQueries)}
                         className="h-8 text-sm"
                       />
-                      <p className="text-[11px] leading-4 text-slate-500">Сколько ниш × городов запустить за раз.</p>
+                      <p className="text-[11px] leading-4 text-slate-500">От 1 до 40. Один запрос = один город + одна ниша.</p>
                     </div>
                     <div className="space-y-1.5">
-                      <Label className="text-xs text-slate-600">Минимум отзывов</Label>
+                      <Label className="text-xs text-slate-600">Минимум отзывов в карточке</Label>
                       <Input
                         type="number"
                         value={config.minReviews}
                         onChange={(event) => handleChange("minReviews", Number(event.target.value))}
                         className="h-8 text-sm"
                       />
-                      <p className="text-[11px] leading-4 text-slate-500">Меньшее количество — карточка не попадёт в результат.</p>
+                      <p className="text-[11px] leading-4 text-slate-500">Если отзывов меньше — карточку не сохраняем.</p>
                     </div>
                     <div className="space-y-1.5">
-                      <Label className="text-xs text-slate-600">Лидов с запроса</Label>
+                      <Label className="text-xs text-slate-600">Сколько карточек сохранить с одного запроса</Label>
                       <Input
                         type="number"
                         min={1}
                         max={MAX_SAFE_PER_QUERY}
                         value={config.maxPerQuery}
                         onChange={(event) => handleChange("maxPerQuery", Number(event.target.value))}
+                        onBlur={() => handleChange("maxPerQuery", runConfig.maxPerQuery)}
                         className="h-8 text-sm"
                       />
-                      <p className="text-[11px] leading-4 text-slate-500">Максимум подходящих карточек на один запрос.</p>
+                      <p className="text-[11px] leading-4 text-slate-500">От 1 до 10. Поиск может проверить больше, но сохранит только подходящие.</p>
                     </div>
                     <div className="space-y-1.5">
-                      <Label className="text-xs text-slate-600">Пауза между запросами</Label>
+                      <Label className="text-xs text-slate-600">Пауза между поисками</Label>
                       <Input
                         type="number"
                         min={MIN_SAFE_DELAY_SECONDS}
@@ -293,22 +302,29 @@ export function SearchForm({ onRun, isLoading, preferences }: SearchFormProps) {
                         onChange={(event) => handleChange("requestDelaySeconds", Number(event.target.value))}
                         className="h-8 text-sm"
                       />
-                      <p className="text-[11px] leading-4 text-slate-500">Не меньше 8 секунд — защита от блокировки.</p>
+                      <p className="text-[11px] leading-4 text-slate-500">От 8 до 60 секунд. На число лидов не влияет, только замедляет сбор.</p>
                     </div>
                   </div>
+                  {(config.maxQueries !== safeMaxQueries || config.maxPerQuery !== runConfig.maxPerQuery) && (
+                    <p className="rounded-md border border-amber-200 bg-amber-50 px-2.5 py-2 text-[11px] leading-4 text-amber-800">
+                      Недопустимые значения применятся как {safeMaxQueries} запросов и до {runConfig.maxPerQuery} карточек с запроса.
+                    </p>
+                  )}
+                  <p className="text-[11px] leading-4 text-slate-500">
+                    <span className="font-medium text-slate-700">Защита источника:</span> до 80 поисковых запросов за 24 часа — это две полные пачки по 40, а не 80 лидов.
+                  </p>
                 </div>
 
-                <div className="grid gap-2 border-t pt-3 sm:grid-cols-2">
-                  <label className={`flex min-h-14 items-start gap-2 rounded-md border px-2.5 py-2 text-xs ${shouldSavePhotos ? "bg-white" : "cursor-not-allowed bg-slate-50 text-slate-400"}`}>
+                <div className="space-y-2 border-t pt-3">
+                  <label className="flex min-h-14 items-start gap-2 rounded-md border bg-white px-2.5 py-2 text-xs transition-colors hover:bg-slate-50">
                     <Checkbox
-                      checked={config.downloadPhotos}
-                      disabled={!shouldSavePhotos}
-                      onCheckedChange={(checked) => handleChange("downloadPhotos", Boolean(checked))}
+                      checked={config.refreshKnown}
+                      onCheckedChange={(checked) => handleChange("refreshKnown", Boolean(checked))}
                       className="mt-0.5"
                     />
                     <span>
-                      <span className="block font-medium text-slate-800">Скачать фото в папку лида</span>
-                      <span className="mt-0.5 block leading-4 text-slate-500">Доступно после выбора «Фото».</span>
+                      <span className="block font-medium text-slate-800">Обновить уже известные карточки</span>
+                      <span className="mt-0.5 block leading-4 text-slate-500">По умолчанию собираем только новые. Включите, чтобы дополнить известные лиды; они займут лимит запроса.</span>
                     </span>
                   </label>
                   <label className="flex min-h-14 items-start gap-2 rounded-md border bg-white px-2.5 py-2 text-xs transition-colors hover:bg-slate-50">
@@ -331,7 +347,8 @@ export function SearchForm({ onRun, isLoading, preferences }: SearchFormProps) {
 
       <div className="mt-auto flex shrink-0 flex-col items-center gap-3 border-t bg-white p-4">
         <div className="w-full rounded-md border bg-slate-50 px-2.5 py-1.5 text-center text-[11px] text-slate-600">
-          {queryCount} запросов к сбору{requestedQueryCount > queryCount ? ` из ${requestedQueryCount}` : ""}. Источник: Яндекс.
+          К запуску: {queryCount} запросов → до {candidateLimit} {resultLabel} карточек.
+          {requestedQueryCount > queryCount ? ` Из ${requestedQueryCount} запросов возьмём первые ${queryCount}.` : ""}
         </div>
         <Button
           size="lg"
