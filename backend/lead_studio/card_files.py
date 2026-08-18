@@ -32,10 +32,7 @@ def render_brief(lead: dict[str, Any]) -> str:
         for review in lead["reviews"]
         if review.get("text")
     ]
-    if lead.get("lead_type") == "NEW_SITE" and lead["has_site"]:
-        site_status = "сайт-витрина (новый сайт-лид)"
-    else:
-        site_status = "есть сайт (редизайн-лид)" if lead["has_site"] else "сайт не найден"
+    site_status = site_status_value(lead.get("lead_type"), bool(lead["has_site"]))
     return "\n".join(
         [
             f"# Бриф для лендинга: {lead['name']}",
@@ -89,6 +86,16 @@ def status_line(status: str | None) -> str:
     return f"- Статус лида: {STATUS_LABELS.get(code, code)} ({code})"
 
 
+def site_status_value(lead_type: str | None, has_site: bool) -> str:
+    if str(lead_type or "").strip().upper() == "NEW_SITE" and has_site:
+        return "сайт-витрина (новый сайт-лид)"
+    return "есть сайт (редизайн-лид)" if has_site else "сайт не найден"
+
+
+def site_status_line(lead_type: str | None, has_site: bool) -> str:
+    return f"- Статус сайта: {site_status_value(lead_type, has_site)}"
+
+
 def render_card_brief(lead: dict[str, Any]) -> str:
     return render_brief(lead).replace("## Источник\n", f"## Источник\n{status_line(lead.get('lead_status'))}\n", 1)
 
@@ -103,18 +110,30 @@ def brief_with_status(brief: str, status: str | None) -> str:
     return f"{line}\n\n{brief}"
 
 
+def brief_with_site_status(brief: str, lead_type: str | None, has_site: bool) -> str:
+    line = site_status_line(lead_type, has_site)
+    updated, count = re.subn(r"(?m)^- Статус сайта: .*$", line, brief, count=1)
+    if count:
+        return updated
+    if "## Источник" in brief:
+        return brief.replace("## Источник", f"## Источник\n{line}", 1)
+    return f"{line}\n\n{brief}"
+
+
 def normalized_websites(websites: list[str]) -> list[str]:
     return list(dict.fromkeys(website.strip() for website in websites if isinstance(website, str) and website.strip()))
 
 
-def brief_with_websites(brief: str, websites: list[str]) -> str:
+def brief_with_websites(brief: str, websites: list[str], lead_type: str | None = None) -> str:
     site_block = f"Сайт:\n{md_list(websites)}"
     updated, count = re.subn(r"(?ms)^Сайт:\n.*?(?=\n\nСоцсети и мессенджеры:)", site_block, brief, count=1)
     if count:
-        return updated
+        return brief_with_site_status(updated, lead_type, bool(websites))
     if "## Ссылки" in brief:
-        return brief.replace("## Ссылки", f"## Ссылки\n{site_block}", 1)
-    return f"{brief.rstrip()}\n\n## Ссылки\n{site_block}\n"
+        updated = brief.replace("## Ссылки", f"## Ссылки\n{site_block}", 1)
+    else:
+        updated = f"{brief.rstrip()}\n\n## Ссылки\n{site_block}\n"
+    return brief_with_site_status(updated, lead_type, bool(websites))
 
 
 def sync_card_status(data_folder: str | Path | None, status: str | None) -> bool:
@@ -153,7 +172,7 @@ def sync_card_status(data_folder: str | Path | None, status: str | None) -> bool
     return True
 
 
-def sync_card_websites(data_folder: str | Path | None, websites: list[str]) -> bool:
+def sync_card_websites(data_folder: str | Path | None, websites: list[str], lead_type: str | None = None) -> bool:
     if not data_folder:
         return False
 
@@ -170,7 +189,11 @@ def sync_card_websites(data_folder: str | Path | None, websites: list[str]) -> b
         return False
 
     normalized = normalized_websites(websites)
+    normalized_type = str(lead_type).strip().upper() if lead_type is not None else None
     data_changed = lead.get("websites") != normalized or bool(lead.get("has_site")) != bool(normalized)
+    if normalized_type is not None:
+        data_changed = data_changed or lead.get("lead_type") != normalized_type
+        lead["lead_type"] = normalized_type
     lead["websites"] = normalized
     lead["has_site"] = bool(normalized)
     brief_path = folder / "brief.md"
@@ -178,7 +201,7 @@ def sync_card_websites(data_folder: str | Path | None, websites: list[str]) -> b
         brief = brief_path.read_text(encoding="utf-8-sig") if brief_path.is_file() else None
     except (OSError, UnicodeError):
         return False
-    updated_brief = brief_with_websites(brief, normalized) if brief is not None else render_card_brief(lead)
+    updated_brief = brief_with_websites(brief, normalized, lead.get("lead_type")) if brief is not None else render_card_brief(lead)
 
     try:
         if data_changed:
@@ -213,7 +236,8 @@ def sync_all_lead_card_statuses(repo: Any) -> dict[str, int]:
 def sync_organization_card_websites(repo: Any, organization_id: str) -> bool:
     with repo.get_connection() as conn:
         row = conn.execute(
-            "SELECT data_folder, websites_json FROM organizations WHERE id = ?",
+            "SELECT o.data_folder, o.websites_json, l.lead_type FROM organizations o "
+            "JOIN leads l ON l.organization_id = o.id WHERE o.id = ?",
             (organization_id,),
         ).fetchone()
     if not row:
@@ -222,13 +246,14 @@ def sync_organization_card_websites(repo: Any, organization_id: str) -> bool:
         websites = json.loads(row["websites_json"] or "[]")
     except (TypeError, json.JSONDecodeError):
         return False
-    return sync_card_websites(row["data_folder"], websites if isinstance(websites, list) else [])
+    return sync_card_websites(row["data_folder"], websites if isinstance(websites, list) else [], row["lead_type"])
 
 
 def sync_all_organization_card_websites(repo: Any) -> dict[str, int]:
     with repo.get_connection() as conn:
         rows = conn.execute(
-            "SELECT data_folder, websites_json FROM organizations WHERE COALESCE(data_folder, '') <> ''"
+            "SELECT o.data_folder, o.websites_json, l.lead_type FROM organizations o "
+            "JOIN leads l ON l.organization_id = o.id WHERE COALESCE(o.data_folder, '') <> ''"
         ).fetchall()
 
     synced = 0
@@ -237,5 +262,5 @@ def sync_all_organization_card_websites(repo: Any) -> dict[str, int]:
             websites = json.loads(row["websites_json"] or "[]")
         except (TypeError, json.JSONDecodeError):
             websites = []
-        synced += sync_card_websites(row["data_folder"], websites if isinstance(websites, list) else [])
+        synced += sync_card_websites(row["data_folder"], websites if isinstance(websites, list) else [], row["lead_type"])
     return {"checked": len(rows), "synced": synced, "skipped": len(rows) - synced}

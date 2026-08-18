@@ -45,3 +45,36 @@ export function getSocialPlatform(url: string): SocialPlatform {
   }
   return "link"
 }
+
+function socialLinkKey(url: string): string {
+  const value = url.trim()
+  try {
+    const parsed = new URL(value.includes("://") ? value : `https://${value}`)
+    const platform = getSocialPlatform(value)
+    const path = parsed.pathname.replace(/^\/+|\/+$/g, "")
+    if (platform === "telegram") {
+      const phone = path.replace(/^\+/, "")
+      if (/^\d{7,15}$/.test(phone)) return `telegram:${phone}`
+    }
+    if (platform === "whatsapp") {
+      const phone = (parsed.searchParams.get("phone") || path).replace(/\D/g, "")
+      if (phone) return `whatsapp:${phone}`
+    }
+    if (platform === "vk") return `vk:${path.toLowerCase()}`
+  } catch {
+    // Keep malformed links distinct rather than hiding a potentially useful contact.
+  }
+  return value
+}
+
+export function dedupeSocialLinks(links: readonly string[]): string[] {
+  const seen = new Set<string>()
+  return links.filter((link) => {
+    const value = link.trim()
+    if (!value) return false
+    const key = socialLinkKey(value)
+    if (seen.has(key)) return false
+    seen.add(key)
+    return true
+  })
+}

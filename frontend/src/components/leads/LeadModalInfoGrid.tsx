@@ -3,7 +3,7 @@ import { Camera, Clock, ExternalLink, FolderOpen, Globe, Link, MessageCircle, Mu
 import { motion } from "framer-motion"
 import type { Lead } from "@/types"
 import { formatDisplayUrl, isTildaSite, isYandexBusinessSite } from "@/lib/url"
-import { getSocialPlatform, type SocialPlatform } from "@/lib/social-platform"
+import { dedupeSocialLinks, getSocialPlatform, type SocialPlatform } from "@/lib/social-platform"
 
 const fadeLeft = { initial: { opacity: 0, x: -12 }, animate: { opacity: 1, x: 0 } };
 const fadeRight = { initial: { opacity: 0, x: 12 }, animate: { opacity: 1, x: 0 } };
@@ -75,6 +75,7 @@ export function LeadModalInfoGrid({
   isOpeningFolder,
   onOpenLeadFolder,
 }: LeadModalInfoGridProps) {
+  const visibleSocialLinks = dedupeSocialLinks(socialLinks)
   const sourceLinks = lead.sources && lead.sources.length > 0
     ? lead.sources.filter((source) => source.source !== '2gis' && source.source_url)
     : lead.source_url
@@ -166,8 +167,8 @@ export function LeadModalInfoGrid({
               <Link className="size-4" />
               Соцсети и мессенджеры
             </div>
-            {socialLinks.length > 0 ? (
-              socialLinks.map((s, i) => {
+            {visibleSocialLinks.length > 0 ? (
+              visibleSocialLinks.map((s, i) => {
                 const platform = getSocialPlatform(s)
                 return <a
                   key={i}

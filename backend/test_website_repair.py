@@ -45,6 +45,33 @@ class WebsiteRepairTests(unittest.TestCase):
         self.assertEqual(websites, [])
         self.assertEqual(socials, ["https://n123.yclients.com/", "https://vk.ru/freshautoru"])
 
+    def test_deduplicates_equivalent_messenger_links_without_merging_distinct_vk_pages(self):
+        websites, socials = links_from_item(
+            {
+                "socialLinks": [
+                    {"href": "https://t.me/+79805415504"},
+                    {"href": "https://t.me/79805415504"},
+                    {"href": "https://wa.me/79805415504?text=hello"},
+                    {"href": "https://api.whatsapp.com/send?phone=79805415504"},
+                    {"href": "https://vk.ru/allauto_service"},
+                    {"href": "https://vk.com/allauto_service"},
+                    {"href": "https://vk.ru/club133296133"},
+                ],
+            },
+            {},
+        )
+
+        self.assertEqual(websites, [])
+        self.assertEqual(
+            socials,
+            [
+                "https://t.me/+79805415504",
+                "https://wa.me/79805415504?text=hello",
+                "https://vk.ru/allauto_service",
+                "https://vk.ru/club133296133",
+            ],
+        )
+
     def test_repairs_only_missing_website_data_from_saved_yandex_payload(self):
         item = {
             "id": "sgoryacha-test",
@@ -121,8 +148,10 @@ class WebsiteRepairTests(unittest.TestCase):
             self.assertEqual(repaired["lead_type"], "REDESIGN")
             self.assertEqual(card_data["websites"], expected_websites)
             self.assertTrue(card_data["has_site"])
+            self.assertEqual(card_data["lead_type"], "REDESIGN")
             self.assertIn("https://borauto.example/salon", card_brief)
             self.assertIn("https://borauto.example/service", card_brief)
+            self.assertIn("- Статус сайта: есть сайт (редизайн-лид)", card_brief)
             self.assertIn("## Ручная заметка\nСохранить", card_brief)
 
     def test_repair_keeps_clients_site_only_as_new_site(self):

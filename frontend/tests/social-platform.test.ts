@@ -1,6 +1,6 @@
 import assert from "node:assert/strict"
 import test from "node:test"
-import { getSocialPlatform } from "../src/lib/social-platform.ts"
+import { dedupeSocialLinks, getSocialPlatform } from "../src/lib/social-platform.ts"
 
 test("detects common social and messenger domains", () => {
   const cases = [
@@ -19,4 +19,24 @@ test("detects common social and messenger domains", () => {
   for (const [url, expected] of cases) {
     assert.equal(getSocialPlatform(url), expected, url)
   }
+})
+
+test("deduplicates equivalent messenger links and keeps distinct VK pages", () => {
+  assert.deepEqual(
+    dedupeSocialLinks([
+      "https://t.me/+79805415504",
+      "https://t.me/79805415504",
+      "https://wa.me/79805415504?text=hello",
+      "https://api.whatsapp.com/send?phone=79805415504",
+      "https://vk.ru/allauto_service",
+      "https://vk.com/allauto_service",
+      "https://vk.ru/club133296133",
+    ]),
+    [
+      "https://t.me/+79805415504",
+      "https://wa.me/79805415504?text=hello",
+      "https://vk.ru/allauto_service",
+      "https://vk.ru/club133296133",
+    ],
+  )
 })

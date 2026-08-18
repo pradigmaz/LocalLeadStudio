@@ -159,6 +159,35 @@ def links_from_item(item: dict[str, Any], row: dict[str, str]) -> tuple[list[str
             return ""
         return (parsed.hostname or "").lower()
 
+    def social_key(href: str) -> str:
+        parsed = urlparse(href)
+        if not parsed.scheme:
+            parsed = urlparse(f"https:{href}" if href.startswith("//") else f"https://{href}")
+        host = (parsed.hostname or "").lower()
+        path = parsed.path.strip("/")
+        if is_host_in(host, ("t.me", "telegram.me", "telegram.org")):
+            account = path.lstrip("+")
+            if re.fullmatch(r"\d{7,15}", account):
+                return f"telegram:{account}"
+        if is_host_in(host, ("wa.me", "whatsapp.com")):
+            phone = re.sub(r"\D", "", parse_qs(parsed.query).get("phone", [path])[0])
+            if phone:
+                return f"whatsapp:{phone}"
+        if is_host_in(host, ("vk.ru", "vk.com", "vkontakte.ru")):
+            return f"vk:{path.rstrip('/').lower()}"
+        return href
+
+    def dedupe_socials(values: list[str]) -> list[str]:
+        seen = set()
+        result = []
+        for href in values:
+            key = social_key(href)
+            if key in seen:
+                continue
+            seen.add(key)
+            result.append(href)
+        return result
+
     def route_link(href: str) -> None:
         href = unwrap_vk_away(text(href))
         host = href_host(href)
@@ -184,7 +213,7 @@ def links_from_item(item: dict[str, Any], row: dict[str, str]) -> tuple[list[str
     excel_socials = first_value(row, "Соцсети", "whatsapp", "telegram", "vkontakte")
     if excel_socials:
         socials.extend([part.strip() for part in excel_socials.split(",") if part.strip()])
-    return sorted(set(websites)), sorted(set(socials))
+    return sorted(set(websites)), dedupe_socials(socials)
 
 
 def repair_missing_website_data(repo: Any) -> int:
