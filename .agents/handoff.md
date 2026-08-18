@@ -162,3 +162,73 @@
 - VERIFIED: Red→green backend classification and frontend hostname tests; 23 Python tests, `compileall`, 9 frontend Node tests, lint, build, and `git diff --check` pass.
 - NEXT: Visible in the next user-approved portable build/restart. Existing saved lead types stay unchanged.
 - ARCH: Hosted suffix means platform provenance, not a quality verdict; no URL crawl or visual scoring.
+
+## 2026-08-17 — prebuild code audit
+
+- TASK: Perform a read-only LeadStudio review before the next portable build, using project rules, Ponytail, Karpathy and the review rubric.
+- STATE: BLOCKED; portable was not built and source/user data were not changed.
+- CHANGED: Added `.agents/reviews/localleadstudio-review-findings-2026-08-17.md` and updated the existing project task record. Confirmed `P1` release-order drift plus `P2` card-file website repair drift and `P2` unknown-backend reuse on port `8765`.
+- VERIFIED: 23 Python tests, Python compile, frontend lint, 9 Node tests, frontend production build, Electron selfcheck and `git diff --check` pass; temporary reproduction proved DB `REDESIGN` versus stale `data.json` `NEW_SITE` / `brief.md` site status.
+- NEXT: In one authorized fix task, close the three findings with narrow regression checks; only then rebuild and smoke-test the portable.
+
+## 2026-08-17 — prebuild audit fixes
+
+- TASK: Close the confirmed P1/P2 audit findings without rebuilding portable or touching user data.
+- STATE: Complete in source; portable release smoke remains pending a separate approved build.
+- CHANGED: Added release preflight and corrected README order; card website sync now writes canonical `lead_type` and site-status line; Electron refuses a preoccupied `8765` with a clear error instead of reusing another backend.
+- VERIFIED: Red→green website-card and Electron release checks; 23 Python tests, frontend lint/test/build, Electron syntax/selfcheck, and `git diff --check` pass. Direct preflight correctly stops on the intentionally absent `backend/dist/lls-backend/frontend_dist`.
+- NEXT: On approval, make one clean release (`frontend build → PyInstaller → Electron dist`) and smoke-test fresh portable at free and occupied port. Do not migrate saved cards unless separately requested.
+- LEARNING: No new skill or duplicate solution note: the durable release order is in `README.md`, and the exact failure pattern, rejected unknown-port reuse, tests and remaining smoke are recorded in the audit report plus this task record.
+
+## 2026-08-18 — portable release after audit fixes
+
+- TASK: Build the approved Windows x64 portable release from the audited source.
+- STATE: Complete; fresh release is isolated, old portable folders and user data were not touched.
+- CHANGED: Rebuilt `frontend/dist` and PyInstaller backend; corrected preflight to resolve current PyInstaller `_internal/frontend_dist` with a legacy-root fallback; built `portable-2026-08-18-audit-fixes` and removed only its generated unpacked/debug intermediates.
+- VERIFIED: Frontend lint/test/build, PyInstaller, 23 Python tests, compileall, Electron syntax/selfcheck, preflight, artifact content and secret-pattern scan pass. Temporary copy smoke returned HTTP 200; its process tree was stopped and port `8765` is free.
+- NEXT: Deliver [Local Lead Studio 0.1.0.exe](</E:/всё по техничке/LocalLeadStudio/electron/portable-2026-08-18-audit-fixes/Local%20Lead%20Studio%200.1.0.exe>) with SHA-256 `F6E1C8F21F36EF3E2237A870488307B3995C95169AC2B3E6056CA85DB62F44AE`. Commit/push remains a separate explicit action.
+
+## 2026-08-18 — readable collection settings width
+
+- TASK: Make the collection settings readable instead of squeezing labels into a narrow sidebar.
+- STATE: Complete in source; no portable rebuild/restart or user-data change.
+- CHANGED: Main Electron window now has `minWidth: 1120`; the shared constructor sidebar grew from `w-80` (320 px) to `w-[26rem]` (416 px). Existing two-column option grid and collection contract remain unchanged.
+- VERIFIED: Electron syntax/selfcheck, frontend lint/build, and `git diff --check` pass. Runtime visual smoke: NOT_EVALUATED — source Electron was not launched against user data.
+- NEXT: The current portable receives the layout in the next separately approved build/restart.
+- LEARNING: No new skill: one fixed desktop layout boundary, not a repeatable agent workflow; rejected sidebar-only sizing because it leaves Electron resizable into the same failure.
+
+## 2026-08-18 — social links, photo capture and collection ceiling
+
+- TASK: Fix duplicate/overloaded social links, make photo capture behave as the user expects, and make the collection-volume ceiling explicit.
+- STATE: Complete in source; no portable rebuild/restart, server launch, data migration, or user-data mutation.
+- CHANGED: Parser and card UI now collapse equivalent phone-form Telegram/WhatsApp links and same VK paths across `vk.ru`/`vk.com`, preserving the first source URL and distinct VK pages. Selecting `Фото` directly enables photo download to the lead folder; deselecting turns it and `Только лиды с фотографиями` off. Form makes the effective 40-query cap and `queries × cards` estimate visible; a typed value above 40 is clamped on blur.
+- VERIFIED: Focused tests failed before implementation then passed. Full checks: 24 Python tests, `python -m compileall -q backend`, 10 Node frontend tests, frontend lint/build, and `git diff --check` pass.
+- NEXT: The source changes appear in the next separately approved portable build/restart. Existing saved data is not rewritten; the frontend cleanup will apply when those cards are opened in that build.
+- LEARNING: No new skill or solution note: a single local parse/display contract, not a reusable workflow. Rejected dropping all repeated VK links because distinct pages may be valid business contacts.
+
+## 2026-08-18 — Yandex Browser-only outbound routes
+
+- TASK: Open VK, MAX and Yandex Maps cards only in Yandex Browser, so those links do not use the default-browser VPN route.
+- STATE: Complete in source; no portable build/restart, browser launch, server launch, data migration, or user-data mutation.
+- CHANGED: Added a strict `isYandexBrowserOnlyUrl` route policy for `vk.ru`/`vk.com`/`vkontakte.ru`, `max.ru`, and Yandex Maps paths. Electron resolves the installed Yandex `browser.exe` from standard Windows roots and spawns it with the URL; target routes fail closed rather than falling back to `shell.openExternal`. Other valid HTTP(S) URLs retain normal system-browser opening, and Electron still denies external popup windows.
+- VERIFIED: The installed executable exists at `C:\Program Files\Yandex\YandexBrowser\Application\browser.exe`. Red selfcheck initially failed because the policy export was absent; after implementation, `npm run check`, `node --check main.js`, `node --check external-links.js`, and `git diff --check` pass. Selfcheck covers VK, MAX, Yandex Maps, normal web and Yandex non-maps URLs.
+- NEXT: The behavior becomes visible in the next separately approved portable build/restart. Runtime browser/Electron smoke is `NOT_EVALUATED` by design; it would launch user-facing processes.
+- LEARNING: No new skill or solution note: one scoped Windows routing policy. Rejected changing the system default browser and any default-browser fallback for target URLs.
+
+## 2026-08-18 — понятный механизм ограничений сбора
+
+- TASK: Make the collection-limit panel explain what each value changes and what will actually run.
+- STATE: Complete in source; no portable rebuild/restart, server launch, or user-data mutation.
+- CHANGED: `SearchForm` now defines one request as city + niche, shows the live `queries → maximum new/updated cards` estimate, explains all four fields, warns when typed values will be clamped to 40/10, and distinguishes the local 80-search/24-hour guard from lead count.
+- VERIFIED: Pre-change acceptance check failed on the missing clarity copy; post-change check passed. `npm run lint`, `npm run build`, and `git diff --check` pass. Runtime visual smoke: NOT_EVALUATED.
+- NEXT: The source UI appears after the next separately approved portable build/restart; no collection limits or source traffic behaviour changed.
+
+## 2026-08-18 — защита от уже известных карточек
+
+- TASK: Не тратить лимит запроса на лиды, уже известные SQLite, но оставить отдельный явный режим их обновления.
+- STATE: Complete in source; portable build/restart, user data and schema migrations were not run.
+- CHANGED: Default `refreshKnown: false` checks the existing exact SQLite identity before `keep_lead`/enrichment. Known cards are recorded as `EXISTING_SKIPPED` with `уже в базе`, shown as `в базе`, do not update data and return `False`, so they do not occupy `maxPerQuery`. Checkbox `Обновить уже известные карточки` restores current enrichment behavior.
+- VERIFIED: Red→green tests for default skip and explicit enrichment; `test_collection_fields` 9/9, full backend 26/26, `compileall`, frontend lint and `npx tsc -b` pass. `npm run build` and Node's test runner are NOT_EVALUATED: sandbox blocks native child processes with `EPERM` before project code runs.
+- NEXT: Source behavior becomes visible after the next separately approved portable build/restart. Existing exact source ID, name/address, phone and domain matching remain unchanged; no fuzzy merge was added.
+- BLOCKER: The task-created `.tmp-codex-tests` could not be removed after its exact path was verified because the sandbox rejects recursive deletion; it contains only test probes and no user data.
+- LEARNING: Promotion skipped: this is one local collection-mode contract, covered by narrow regression tests and this handoff; rejected fuzzy duplicate matching and a DB migration.
