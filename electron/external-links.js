@@ -1,3 +1,20 @@
+function isHostIn(host, domains) {
+  return domains.some((domain) => host === domain || host.endsWith(`.${domain}`));
+}
+
+function isYandexBrowserOnlyUrl(url) {
+  try {
+    const parsed = new URL(url);
+    if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') return false;
+    const host = parsed.hostname.toLowerCase();
+    if (isHostIn(host, ['vk.ru', 'vk.com', 'vkontakte.ru', 'max.ru'])) return true;
+    return isHostIn(host, ['yandex.ru', 'yandex.com'])
+      && (host.startsWith('maps.') || parsed.pathname === '/maps' || parsed.pathname.startsWith('/maps/'));
+  } catch {
+    return false;
+  }
+}
+
 function openHttpUrl(url, openExternal) {
   try {
     const { protocol } = new URL(url);
@@ -24,4 +41,4 @@ function handleExternalNavigation(url, localOrigin, openExternal) {
   return true;
 }
 
-module.exports = { handleExternalNavigation, handleExternalWindow };
+module.exports = { handleExternalNavigation, handleExternalWindow, isYandexBrowserOnlyUrl };

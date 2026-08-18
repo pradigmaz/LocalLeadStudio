@@ -17,4 +17,10 @@ function waitForPort(port, timeoutMs = 30000, intervalMs = 400) {
   });
 }
 
-module.exports = { waitForPort };
+function portStartupError(port, occupied) {
+  return occupied
+    ? `Порт ${port} уже занят. Закройте запущенный LeadStudio или другое приложение и повторите запуск.`
+    : null;
+}
+
+module.exports = { waitForPort, portStartupError };

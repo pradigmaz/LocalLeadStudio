@@ -142,7 +142,11 @@ function App() {
         body: JSON.stringify({ status: newStatus })
       });
       
-      await readJson<{ success: boolean }>(response);
+      const result = await readJson<{ success: boolean }>(response);
+      if (!result.success) throw new Error("Сервер не подтвердил обновление статуса.");
+      if (newStatus === 'REJECT') {
+        setSelectedLead(current => current?.id === leadId ? null : current);
+      }
     } catch (err) {
       setLeads(previousLeads);
       setSelectedLead(previousSelectedLead);
@@ -208,7 +212,7 @@ function App() {
     <div className="flex h-screen bg-slate-100 overflow-hidden text-slate-900 font-sans">
       <Toaster position="bottom-right" richColors />
       {/* Sidebar */}
-      <div className="w-80 shrink-0 border-r bg-white flex flex-col z-10 shadow-sm">
+      <div className="w-[26rem] shrink-0 border-r bg-white flex flex-col z-10 shadow-sm">
         <div className="h-14 flex items-center px-6 border-b shrink-0">
           <div className="flex items-center gap-2 font-bold text-lg tracking-tight">
             <div className="w-6 h-6 bg-primary rounded-md flex items-center justify-center text-primary-foreground text-xs">

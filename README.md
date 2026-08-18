@@ -128,11 +128,11 @@ electron/                  десктоп-обёртка (окно над лок
 Нужны Python, Node и `pyinstaller` (`pip install pyinstaller`):
 
 ```cmd
-:: 1. backend → self-contained exe
-cd backend && python -m PyInstaller --noconfirm --clean lls-backend.spec && cd ..
-:: 2. фронт
+:: 1. фронт
 cd frontend && npm run build && cd ..
-:: 3. портативный .exe
+:: 2. backend → self-contained exe с текущим frontend/dist
+cd backend && python -m PyInstaller --noconfirm --clean lls-backend.spec && cd ..
+:: 3. портативный .exe (проверит совпадение фронтенда в backend-бандле)
 cd electron && npm install && npm run dist
 :: 4. убрать build-мусор, оставить только .exe
 cd .. && clean.bat

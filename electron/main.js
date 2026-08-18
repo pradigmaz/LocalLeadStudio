@@ -1,16 +1,43 @@
 const { app, BrowserWindow, shell } = require('electron');
 const { spawn } = require('child_process');
+const fs = require('fs');
 const net = require('net');
 const path = require('path');
-const { handleExternalNavigation, handleExternalWindow } = require('./external-links');
-const { waitForPort } = require('./wait-port');
+const { handleExternalNavigation, handleExternalWindow, isYandexBrowserOnlyUrl } = require('./external-links');
+const { waitForPort, portStartupError } = require('./wait-port');
 
 const PORT = 8765;
 const BACKEND_DIR = path.join(__dirname, '..', 'backend');
 let backend = null;
 let mainWindow = null;
 
-// Одна попытка коннекта: занят ли порт уже живым backend.
+function findYandexBrowser() {
+  const roots = [process.env.LOCALAPPDATA, process.env.ProgramFiles, process.env['ProgramFiles(x86)']].filter(Boolean);
+  return roots
+    .map((root) => path.join(root, 'Yandex', 'YandexBrowser', 'Application', 'browser.exe'))
+    .find((browserPath) => fs.existsSync(browserPath));
+}
+
+function openYandexBrowser(url) {
+  const browserPath = findYandexBrowser();
+  if (!browserPath) {
+    console.error(`Yandex Browser не найден; ссылка не открыта: ${url}`);
+    return;
+  }
+  const child = spawn(browserPath, [url], { detached: true, stdio: 'ignore', windowsHide: true });
+  child.once('error', (error) => console.error(`Не удалось открыть Yandex Browser: ${error.message}`));
+  child.unref();
+}
+
+function openExternalLink(url) {
+  if (isYandexBrowserOnlyUrl(url)) {
+    openYandexBrowser(url);
+    return;
+  }
+  void shell.openExternal(url);
+}
+
+// Одна попытка коннекта: занят ли порт другим процессом.
 function isPortListening(port, timeoutMs = 800) {
   return new Promise((resolve) => {
     const sock = net.connect(port, '127.0.0.1');
@@ -24,12 +51,8 @@ function isPortListening(port, timeoutMs = 800) {
 // Packaged: запускаем самодостаточный PyInstaller-бандл (Python не нужен на машине).
 // Dev: системный `python` + установленные backend-зависимости.
 async function startBackend() {
-  // Зомби-инстанс с прошлого запуска уже держит порт — переиспользуем его,
-  // иначе новый процесс не сможет забиндиться (WinError 10048) и окно упадёт.
-  if (await isPortListening(PORT)) {
-    console.log(`backend already running on ${PORT}, reusing`);
-    return;
-  }
+  const startupError = portStartupError(PORT, await isPortListening(PORT));
+  if (startupError) return startupError;
   if (app.isPackaged) {
     const exe = path.join(process.resourcesPath, 'lls-backend', 'lls-backend.exe');
     // Данные — рядом с портативным .exe (а не во временной папке распаковки).
@@ -42,7 +65,6 @@ async function startBackend() {
       env: { ...process.env, LLS_DATA_DIR: dataDir },
     });
   } else {
-    const fs = require('fs');
     const isWin = process.platform === 'win32';
     const venvPython = isWin
       ? path.join(BACKEND_DIR, 'venv', 'Scripts', 'python.exe')
@@ -59,6 +81,7 @@ async function startBackend() {
   backend.on('exit', (code) => {
     if (code) console.error(`backend exited with code ${code}`);
   });
+  return null;
 }
 
 function killBackend() {
@@ -72,7 +95,13 @@ function focusMainWindow() {
   mainWindow.focus();
 }
 
-async function createWindow() {
+function loadBackendError(win, message) {
+  win.loadURL('data:text/html,' + encodeURIComponent(
+    `<h2 style="font-family:sans-serif;padding:2rem">${message}</h2>`
+  ));
+}
+
+async function createWindow(startupError = null) {
   if (mainWindow) {
     focusMainWindow();
     return;
@@ -80,6 +109,7 @@ async function createWindow() {
   const win = new BrowserWindow({
     width: 1440,
     height: 900,
+    minWidth: 1120,
     title: 'Local Lead Studio',
     backgroundColor: '#f1f5f9',
   });
@@ -87,18 +117,20 @@ async function createWindow() {
   win.on('closed', () => {
     if (mainWindow === win) mainWindow = null;
   });
+  if (startupError) {
+    loadBackendError(win, startupError);
+    return;
+  }
   try {
     await waitForPort(PORT);
     win.loadURL(`http://127.0.0.1:${PORT}`);
     win.webContents.on('did-finish-load', () => win.webContents.setZoomFactor(1));
-    win.webContents.setWindowOpenHandler(({ url }) => handleExternalWindow(url, shell.openExternal));
+    win.webContents.setWindowOpenHandler(({ url }) => handleExternalWindow(url, openExternalLink));
     win.webContents.on('will-navigate', (event, url) => {
-      if (handleExternalNavigation(url, `http://127.0.0.1:${PORT}`, shell.openExternal)) event.preventDefault();
+      if (handleExternalNavigation(url, `http://127.0.0.1:${PORT}`, openExternalLink)) event.preventDefault();
     });
   } catch (err) {
-    win.loadURL('data:text/html,' + encodeURIComponent(
-      `<h2 style="font-family:sans-serif;padding:2rem">Backend не запустился: ${err.message}.<br>Проверь, что установлен Python и зависимости backend.</h2>`
-    ));
+    loadBackendError(win, `Backend не запустился: ${err.message}. Проверь, что установлен Python и зависимости backend.`);
   }
 }
 
@@ -107,10 +139,10 @@ if (!app.requestSingleInstanceLock()) {
 } else {
   app.on('second-instance', focusMainWindow);
   app.whenReady().then(async () => {
-    await startBackend();
-    await createWindow();
+    const startupError = await startBackend();
+    await createWindow(startupError);
     app.on('activate', () => {
-      if (BrowserWindow.getAllWindows().length === 0) createWindow();
+      if (BrowserWindow.getAllWindows().length === 0) createWindow(startupError);
     });
   });
 
