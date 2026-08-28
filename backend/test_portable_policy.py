@@ -4,6 +4,7 @@ import unittest
 from pathlib import Path
 
 BACKEND_DIR = Path(__file__).parent
+PROJECT_ROOT = BACKEND_DIR.parent
 sys.path.insert(0, str(BACKEND_DIR))
 
 import folders
@@ -12,6 +13,21 @@ from lead_pipeline import build_providers, resolve_output_dir
 
 
 class PortablePolicyTests(unittest.TestCase):
+    def test_portable_builder_keeps_dependencies_local_and_builds_in_order(self) -> None:
+        script = (PROJECT_ROOT / "build-portable.bat").read_text(encoding="utf-8")
+
+        self.assertIn('python -m venv "%ROOT%backend\\venv"', script)
+        self.assertIn('"%ROOT%backend\\venv\\Scripts\\python.exe" -m pip install --no-cache-dir', script)
+        self.assertIn('NPM_CONFIG_CACHE=%CACHE_ROOT%\\npm', script)
+        self.assertIn('electron_config_cache=%CACHE_ROOT%\\electron', script)
+        self.assertIn('ELECTRON_BUILDER_CACHE=%CACHE_ROOT%\\electron-builder', script)
+        self.assertIn('start "" "https://www.python.org/downloads/windows/"', script)
+        self.assertIn('start "" "https://nodejs.org/en/download"', script)
+        self.assertIn('if defined IN_SUBDIR popd', script)
+        self.assertNotIn(' -g ', script)
+        self.assertLess(script.index('call npm run build'), script.index('-m PyInstaller'))
+        self.assertLess(script.index('-m PyInstaller'), script.index('call npm run dist'))
+
     def test_only_yandex_runs_when_legacy_preferences_name_2gis(self) -> None:
         providers = build_providers({"provider_priority": "2gis", "enabled_providers": ["2gis"]})
 

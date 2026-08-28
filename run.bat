@@ -8,8 +8,8 @@ REM ============================================================
 setlocal
 set "ROOT=%~dp0"
 
-where python >nul 2>nul || (echo [!] Нет Python 3.x в PATH: https://www.python.org/downloads/ & pause & exit /b 1)
-where npm    >nul 2>nul || (echo [!] Нет Node.js/npm: https://nodejs.org/ & pause & exit /b 1)
+where python >nul 2>nul || (echo [!] Нет Python 3.x в PATH. Открываю страницу установки... & start "" "https://www.python.org/downloads/windows/" & pause & exit /b 1)
+where npm    >nul 2>nul || (echo [!] Нет Node.js/npm. Открываю страницу установки... & start "" "https://nodejs.org/en/download" & pause & exit /b 1)
 
 if not exist "%ROOT%backend\venv" (
   echo Создаю venv для backend...

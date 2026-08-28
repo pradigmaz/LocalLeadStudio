@@ -37,7 +37,7 @@ electron/dist/Local Lead Studio 0.1.0.exe   ← двойной клик
 
 > Данные хранятся рядом с `.exe` — в папке `lead_studio_data`.
 
-### Из исходников (без сборки)
+### Из исходников (Windows)
 
 Всё ставится **локально в папку проекта** (`backend/venv`, `node_modules`). В систему
 глобально ничего не пишется — удалите папку проекта, и следов не останется.
@@ -51,12 +51,11 @@ electron/dist/Local Lead Studio 0.1.0.exe   ← двойной клик
 | Python     | 3.10+     | https://www.python.org/downloads/ |
 | Node.js    | 18+ (LTS) | https://nodejs.org/en/download/   |
 
-- **Windows:** при установке Python отметьте галочку **«Add python.exe to PATH»**.   Node.js — обычный установщик `.msi`, ничего отмечать не надо.
-- **macOS:** проще через [Homebrew](https://brew.sh/): `brew install python node`.   Либо скачайте установщики `.pkg` по ссылкам выше.
+- При установке Python отметьте галочку **«Add python.exe to PATH»**. Node.js — обычный установщик `.msi`, ничего отмечать не надо.
 
 Проверьте, что оба в PATH (новый терминал):
 ```bash
-python --version    # на macOS может быть python3 --version
+python --version
 node --version
 ```
 
@@ -75,11 +74,6 @@ cd LocalLeadStudio
 **🖥️ Windows** (двойной клик по файлу или в `cmd`):
 ```cmd
 run.bat
-```
-
-**🍏 macOS / Linux** (в терминале):
-```bash
-bash run.sh
 ```
 
 Первый запуск дольше (ставятся зависимости и собирается фронт). Дальше — сразу окно.
@@ -125,20 +119,17 @@ electron/                  десктоп-обёртка (окно над лок
 | **Яндекс.Карты** | парсинг публичной страницы (не API), самолимит ~80/день + паузы | —                                                          |
 ## 📦 Сборка портативной версии
 
-Нужны Python, Node и `pyinstaller` (`pip install pyinstaller`):
+На Windows запустите из корня проекта:
 
 ```cmd
-:: 1. фронт
-cd frontend && npm run build && cd ..
-:: 2. backend → self-contained exe с текущим frontend/dist
-cd backend && python -m PyInstaller --noconfirm --clean lls-backend.spec && cd ..
-:: 3. портативный .exe (проверит совпадение фронтенда в backend-бандле)
-cd electron && npm install && npm run dist
-:: 4. убрать build-мусор, оставить только .exe
-cd .. && clean.bat
+build-portable.bat
 ```
 
-Результат — `electron/dist/Local Lead Studio 0.1.0.exe` (Windows x64, ~100 МБ, Python не нужен).
+Скрипт проверит Python 3.10+ и Node.js 18+ в `PATH`. Если одного из них нет или версия устарела, откроется официальная страница установки; после установки перезапустите `build-portable.bat`.
+
+Все зависимости проекта остаются рядом с исходниками: Python-пакеты и PyInstaller — в `backend/venv`, npm-пакеты — в `frontend/node_modules` и `electron/node_modules`, кэши сборки — в `.cache/`. В глобальные Python/npm-пакеты скрипт ничего не ставит.
+
+Результат — `electron/dist/Local Lead Studio 0.1.0.exe` (Windows x64, ~100 МБ). На ПК получателя этого portable `.exe` Python и Node.js не нужны.
 
 ## 🛠 Разработка
 
