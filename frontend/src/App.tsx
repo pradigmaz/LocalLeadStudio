@@ -21,6 +21,7 @@ const TERMINAL_JOB_STATUSES = new Set(['FINISHED', 'FAILED', 'CANCELLED', 'RATE_
 function App() {
   const [viewState, setViewState] = useState<'IDLE' | 'LOADING' | 'RESULTS'>('IDLE');
   const [selectedLead, setSelectedLead] = useState<Lead | null>(null);
+  const [isLeadModalOpen, setIsLeadModalOpen] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [jobStatus, setJobStatus] = useState<RunJobStatus>(EMPTY_JOB_STATUS);
   const [preferences, setPreferences] = useState<ProviderPreferences | null>(null);
@@ -161,8 +162,8 @@ function App() {
       
       const result = await readJson<{ success: boolean }>(response);
       if (!result.success) throw new Error("Сервер не подтвердил обновление статуса.");
-      if (newStatus === 'REJECT' || newStatus === 'POTENTIAL') {
-        setSelectedLead(current => current?.id === leadId ? null : current);
+      if ((newStatus === 'REJECT' || newStatus === 'POTENTIAL') && selectedLead?.id === leadId) {
+        setIsLeadModalOpen(false);
       }
     } catch (err) {
       setLeads(previousLeads);
@@ -185,6 +186,7 @@ function App() {
     const viewedLead = { ...lead, viewed_at: viewedAt };
 
     setSelectedLead(viewedLead);
+    setIsLeadModalOpen(true);
     if (!lead.viewed_at) {
       setLeads(current => current.map(l => l.id === lead.id ? { ...l, viewed_at: viewedAt } : l));
     }
@@ -239,7 +241,6 @@ function App() {
   const handleLeadDeleted = (leadId: string) => {
     const deletedLead = leads.find(lead => lead.id === leadId);
     setLeads(current => current.filter(lead => lead.id !== leadId));
-    setSelectedLead(current => current?.id === leadId ? null : current);
     setFilteredLeadTotal(current => Math.max(0, current - 1));
     setTotalLeads(current => Math.max(0, current - 1));
     if (deletedLead) {
@@ -376,8 +377,9 @@ function App() {
 
       <LeadModal 
         lead={selectedLead} 
-        isOpen={!!selectedLead} 
-        onClose={() => setSelectedLead(null)}
+        isOpen={isLeadModalOpen}
+        onClose={() => setIsLeadModalOpen(false)}
+        onCloseComplete={() => setSelectedLead(null)}
         onStatusChange={handleStatusChange}
         onPriorityChange={handlePriorityChange}
         onLeadDeleted={handleLeadDeleted}

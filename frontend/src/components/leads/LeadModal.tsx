@@ -22,6 +22,7 @@ interface LeadModalProps {
   lead: Lead | null;
   isOpen: boolean;
   onClose: () => void;
+  onCloseComplete: () => void;
   onStatusChange: (leadId: string, newStatus: LeadStatus) => void;
   onPriorityChange: (leadId: string, priority: number) => void;
   onLeadDeleted: (leadId: string) => void;
@@ -29,7 +30,7 @@ interface LeadModalProps {
 
 const dedupeLinks = (links: string[]) => [...new Set(links.filter(Boolean))];
 
-export function LeadModal({ lead, isOpen, onClose, onStatusChange, onPriorityChange, onLeadDeleted }: LeadModalProps) {
+export function LeadModal({ lead, isOpen, onClose, onCloseComplete, onStatusChange, onPriorityChange, onLeadDeleted }: LeadModalProps) {
   const [events, setEvents] = useState<LeadEvent[]>([]);
   const [newComment, setNewComment] = useState("");
   const [isLoadingEvents, setIsLoadingEvents] = useState(false);
@@ -156,7 +157,14 @@ export function LeadModal({ lead, isOpen, onClose, onStatusChange, onPriorityCha
 
   return (
     <Sheet open={isOpen} onOpenChange={(open) => !open && onClose()}>
-      <SheetContent className="w-full sm:max-w-2xl h-full flex flex-col p-0 bg-background overflow-hidden gap-0">
+      <SheetContent
+        className="w-full sm:max-w-2xl h-full flex flex-col p-0 bg-background overflow-hidden gap-0"
+        onAnimationEnd={(event) => {
+          if (event.currentTarget === event.target && event.currentTarget.dataset.state === "closed") {
+            onCloseComplete();
+          }
+        }}
+      >
         <LeadModalHeader lead={lead} />
 
         <div className="flex-1 overflow-y-auto min-h-0">
