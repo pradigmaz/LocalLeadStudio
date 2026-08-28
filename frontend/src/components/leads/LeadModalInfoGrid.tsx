@@ -124,7 +124,7 @@ export function LeadModalInfoGrid({
 
                 return (
                   <div key={i} className="flex flex-wrap items-center gap-2 overflow-hidden">
-                    <a href={w} target="_blank" rel="noreferrer" className="text-sm font-medium text-primary hover:underline truncate" title={w}>
+                    <a href={w} target="lead-studio-site" rel="noreferrer" className="text-sm font-medium text-primary hover:underline truncate" title={w}>
                       {formatDisplayUrl(w)}
                     </a>
                     {platformLabel && (
@@ -150,7 +150,7 @@ export function LeadModalInfoGrid({
                 <a
                   key={i}
                   href={s}
-                  target="_blank"
+                  target="lead-studio-site"
                   rel="noreferrer"
                   className="flex items-center justify-between gap-2 rounded-lg border border-emerald-100 bg-emerald-50/60 px-3 py-2 text-sm font-medium text-emerald-800 hover:bg-emerald-50 transition-colors"
                   title={s}

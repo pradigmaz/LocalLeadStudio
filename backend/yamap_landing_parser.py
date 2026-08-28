@@ -175,6 +175,8 @@ def links_from_item(item: dict[str, Any], row: dict[str, str]) -> tuple[list[str
                 return f"whatsapp:{phone}"
         if is_host_in(host, ("vk.ru", "vk.com", "vkontakte.ru")):
             return f"vk:{path.rstrip('/').lower()}"
+        if path and is_host_in(host, ("dikidi.ru", "dikidi.net")):
+            return f"dikidi:{path.lower()}"
         return href
 
     def dedupe_socials(values: list[str]) -> list[str]:

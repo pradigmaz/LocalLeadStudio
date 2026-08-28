@@ -8,6 +8,8 @@ from pathlib import Path
 from urllib.parse import urlparse
 from typing import Any, Dict, List, Optional
 
+from lead_studio.adapters.lead_views import LEAD_VIEW_COLUMNS, get_leads_page as query_leads_page, lead_view_results
+
 logger = logging.getLogger(__name__)
 
 SCHEMA = """
@@ -158,6 +160,8 @@ RUN_STAT_COLUMNS = {
     "enriched_count",
     "existing_count",
 }
+ORGANIZATION_SOURCES_BACKFILL_KEY = "organization_sources_backfill_revision"
+ORGANIZATION_SOURCES_BACKFILL_REVISION = "v1"
 
 class SQLiteRepo:
     def __init__(self, db_path: str | Path):
@@ -189,7 +193,7 @@ class SQLiteRepo:
             self._add_column_if_missing(conn, "runs", "enriched_count", "INTEGER DEFAULT 0")
             self._add_column_if_missing(conn, "runs", "existing_count", "INTEGER DEFAULT 0")
             self._migrate_run_results_history(conn)
-            self._backfill_organization_sources(conn)
+            self._backfill_organization_sources_once(conn)
 
     def _add_column_if_missing(self, conn: sqlite3.Connection, table: str, column: str, definition: str) -> None:
         columns = {row["name"] for row in conn.execute(f"PRAGMA table_info({table})").fetchall()}
@@ -242,6 +246,21 @@ class SQLiteRepo:
                 ),
             )
         conn.execute("DROP TABLE run_results_old")
+
+    def _backfill_organization_sources_once(self, conn: sqlite3.Connection) -> None:
+        row = conn.execute(
+            "SELECT value_json FROM app_settings WHERE key = ?",
+            (ORGANIZATION_SOURCES_BACKFILL_KEY,),
+        ).fetchone()
+        if row and row["value_json"] == json.dumps(ORGANIZATION_SOURCES_BACKFILL_REVISION):
+            return
+
+        self._backfill_organization_sources(conn)
+        conn.execute(
+            "INSERT INTO app_settings (key, value_json, updated_at) VALUES (?, ?, CURRENT_TIMESTAMP) "
+            "ON CONFLICT(key) DO UPDATE SET value_json = excluded.value_json, updated_at = CURRENT_TIMESTAMP",
+            (ORGANIZATION_SOURCES_BACKFILL_KEY, json.dumps(ORGANIZATION_SOURCES_BACKFILL_REVISION)),
+        )
 
     def _backfill_organization_sources(self, conn: sqlite3.Connection) -> None:
         org_columns = {row["name"] for row in conn.execute("PRAGMA table_info(organizations)").fetchall()}
@@ -576,34 +595,32 @@ class SQLiteRepo:
             )
             
     def get_all_leads_view(self) -> List[Dict[str, Any]]:
-        query = """
-        SELECT l.id as id, l.lead_type, l.lead_status, l.contact_status, l.priority, l.score, l.reason, l.viewed_at,
-               o.id as organization_id, o.source_org_id, o.name, o.category, o.address, o.city, o.region, o.rating, o.review_count,
-               o.websites_json, o.phones_json, o.socials_json, o.source_url, o.data_folder, o.photos_json
-        FROM leads l
-        JOIN organizations o ON l.organization_id = o.id
-        ORDER BY l.created_at DESC
-        """
+        query = f"SELECT {LEAD_VIEW_COLUMNS} FROM leads l JOIN organizations o ON l.organization_id = o.id ORDER BY l.created_at DESC"
         with self.get_connection() as conn:
             rows = conn.execute(query).fetchall()
-            results = []
-            for r in rows:
-                d = dict(r)
-                d["websites"] = json.loads(d.pop("websites_json") or "[]")
-                d["phones"] = json.loads(d.pop("phones_json") or "[]")
-                d["social_links"] = json.loads(d.pop("socials_json") or "[]")
-                d["photos"] = json.loads(d.pop("photos_json") or "[]")
-                d["sources"] = self._organization_sources(conn, d["organization_id"])
-                results.append(d)
-            return results
+            return lead_view_results(conn, rows)
 
-    def _organization_sources(self, conn: sqlite3.Connection, org_id: str) -> List[Dict[str, Any]]:
-        rows = conn.execute(
-            "SELECT source, source_org_id, source_url, first_seen_at, last_seen_at "
-            "FROM organization_sources WHERE organization_id = ? ORDER BY first_seen_at ASC",
-            (org_id,),
-        ).fetchall()
-        return [dict(row) for row in rows]
+    def get_leads_page(
+        self,
+        offset: int = 0,
+        limit: int = 50,
+        search: str = "",
+        status: str = "ALL",
+        lead_type: str = "ALL",
+        city: str = "ALL",
+        review_range: str = "ALL",
+    ) -> Dict[str, Any]:
+        with self.get_connection() as conn:
+            return query_leads_page(
+                conn,
+                offset=offset,
+                limit=limit,
+                search=search,
+                status=status,
+                lead_type=lead_type,
+                city=city,
+                review_range=review_range,
+            )
 
     def get_preferences(self) -> Dict[str, Any]:
         defaults = {

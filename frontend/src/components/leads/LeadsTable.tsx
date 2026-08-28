@@ -1,4 +1,3 @@
-import { useMemo, useState } from "react"
 import { Badge } from "@/components/ui/badge"
 import { Input } from "@/components/ui/input"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
@@ -11,66 +10,19 @@ import {
 } from "@/components/ui/table"
 import { Search, Star } from "lucide-react"
 import type { Lead } from "@/types"
+import type { LeadListFilters } from "@/lib/lead-page"
 
 interface LeadsTableProps {
   leads: Lead[];
   onLeadClick: (lead: Lead) => void;
+  filters: LeadListFilters;
+  cities: string[];
+  hasAnyLeads: boolean;
+  onFiltersChange: (filters: LeadListFilters) => void;
 }
 
-export function LeadsTable({ leads, onLeadClick }: LeadsTableProps) {
-  const [searchTerm, setSearchTerm] = useState("");
-  const [statusFilter, setStatusFilter] = useState<string>("NEW");
-  const [typeFilter, setTypeFilter] = useState<string>("ALL");
-  const [cityFilter, setCityFilter] = useState<string>("ALL");
-  const [reviewFilter, setReviewFilter] = useState<string>("ALL");
-
-  const uniqueCities = useMemo(
-    () => Array.from(new Set(leads.map(l => l.city).filter(Boolean))).sort(),
-    [leads]
-  );
-
-  // Filter logic
-  const filteredLeads = useMemo(() => leads.filter(lead => {
-    const matchesSearch =
-      lead.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      (lead.address || "").toLowerCase().includes(searchTerm.toLowerCase()) ||
-      (lead.category || "").toLowerCase().includes(searchTerm.toLowerCase());
-
-    const matchesStatus = statusFilter === "ALL" || lead.lead_status === statusFilter;
-
-    const matchesType = typeFilter === "ALL" || lead.lead_type === typeFilter;
-
-    const matchesCity = cityFilter === "ALL" || lead.city === cityFilter;
-
-    let matchesReviews = true;
-    const revCount = lead.review_count || 0;
-    if (reviewFilter === "0-10") matchesReviews = revCount <= 10;
-    else if (reviewFilter === "10-50") matchesReviews = revCount > 10 && revCount <= 50;
-    else if (reviewFilter === "50-100") matchesReviews = revCount > 50 && revCount <= 100;
-    else if (reviewFilter === "100+") matchesReviews = revCount > 100;
-
-    return matchesSearch && matchesStatus && matchesType && matchesCity && matchesReviews;
-  }), [leads, searchTerm, statusFilter, typeFilter, cityFilter, reviewFilter]);
-
-  const sortedLeads = useMemo(() => [...filteredLeads].sort((a, b) => {
-    // 1. Priority
-    const priorityA = a.priority || 0;
-    const priorityB = b.priority || 0;
-    if (priorityA !== priorityB) {
-      if (priorityA === 0) return 1;
-      if (priorityB === 0) return -1;
-      return priorityA - priorityB;
-    }
-
-    // 2. Type: NEW_SITE first (list already arrives created_at DESC from API)
-    if (a.lead_type !== b.lead_type) {
-      if (a.lead_type === 'NEW_SITE') return -1;
-      if (b.lead_type === 'NEW_SITE') return 1;
-    }
-    return 0;
-  }), [filteredLeads]);
-
-  if (leads.length === 0) {
+export function LeadsTable({ leads, onLeadClick, filters, cities, hasAnyLeads, onFiltersChange }: LeadsTableProps) {
+  if (leads.length === 0 && !hasAnyLeads) {
     return (
       <div className="h-full flex flex-col items-center justify-center text-muted-foreground p-12 text-center border-2 border-dashed rounded-xl bg-white/50 backdrop-blur-md">
         <svg className="w-12 h-12 mb-4 text-slate-300" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="1.5" d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10"></path></svg>
@@ -116,15 +68,15 @@ export function LeadsTable({ leads, onLeadClick }: LeadsTableProps) {
             <Input
               placeholder="Поиск по названию, адресу или категории..."
               className="bg-white/80 backdrop-blur-sm border-slate-200/60 shadow-sm hover:border-slate-300 focus-visible:ring-emerald-500/20 transition-all rounded-xl pl-10 h-10"
-              value={searchTerm}
-              onChange={(e) => setSearchTerm(e.target.value)}
+              value={filters.search}
+              onChange={(e) => onFiltersChange({ ...filters, search: e.target.value })}
             />
           </div>
           
           <div className="flex gap-3">
             <Select
-              value={statusFilter}
-              onValueChange={setStatusFilter}
+              value={filters.status}
+              onValueChange={(status) => onFiltersChange({ ...filters, status })}
             >
               <SelectTrigger className="w-[210px] bg-white/80 backdrop-blur-sm border-slate-200/60 shadow-sm hover:bg-slate-50 transition-all rounded-xl h-10 font-medium">
                 <SelectValue />
@@ -140,8 +92,8 @@ export function LeadsTable({ leads, onLeadClick }: LeadsTableProps) {
             </Select>
 
             <Select
-              value={typeFilter}
-              onValueChange={setTypeFilter}
+              value={filters.leadType}
+              onValueChange={(leadType) => onFiltersChange({ ...filters, leadType })}
             >
               <SelectTrigger className="w-[150px] bg-white/80 backdrop-blur-sm border-slate-200/60 shadow-sm hover:bg-slate-50 transition-all rounded-xl h-10 font-medium">
                 <SelectValue />
@@ -161,7 +113,7 @@ export function LeadsTable({ leads, onLeadClick }: LeadsTableProps) {
             <TableRow className="border-slate-100 hover:bg-transparent">
               <TableHead className="w-[300px] text-slate-500 font-medium py-3">Название / Адрес</TableHead>
               <TableHead className="w-[200px] py-3">
-                <Select value={cityFilter} onValueChange={setCityFilter}>
+                <Select value={filters.city} onValueChange={(city) => onFiltersChange({ ...filters, city })}>
                   <SelectTrigger className="h-8 border-none shadow-none bg-transparent px-2 font-medium text-slate-500 hover:text-slate-900 hover:bg-slate-100/50 rounded-lg transition-all focus:ring-0">
                     <div className="flex items-center gap-1.5">
                       <span>Город:</span>
@@ -170,7 +122,7 @@ export function LeadsTable({ leads, onLeadClick }: LeadsTableProps) {
                   </SelectTrigger>
                   <SelectContent className="rounded-xl shadow-lg border-slate-100">
                     <SelectItem value="ALL" className="rounded-lg cursor-pointer">Все города</SelectItem>
-                    {uniqueCities.map(city => (
+                    {cities.map(city => (
                       <SelectItem key={city} value={city} className="rounded-lg cursor-pointer">{city}</SelectItem>
                     ))}
                   </SelectContent>
@@ -180,7 +132,7 @@ export function LeadsTable({ leads, onLeadClick }: LeadsTableProps) {
               <TableHead className="text-slate-500 font-medium py-3">Тип</TableHead>
               <TableHead className="text-right text-slate-500 font-medium py-3">Рейтинг</TableHead>
               <TableHead className="text-right w-[150px] py-3">
-                <Select value={reviewFilter} onValueChange={setReviewFilter}>
+                <Select value={filters.reviewRange} onValueChange={(reviewRange) => onFiltersChange({ ...filters, reviewRange })}>
                   <SelectTrigger className="h-8 border-none shadow-none bg-transparent px-2 font-medium text-slate-500 hover:text-slate-900 hover:bg-slate-100/50 rounded-lg transition-all focus:ring-0 flex justify-end w-full">
                     <div className="flex items-center gap-1.5 justify-end w-full">
                       <span>Отзывы:</span>
@@ -199,7 +151,7 @@ export function LeadsTable({ leads, onLeadClick }: LeadsTableProps) {
             </TableRow>
           </TableHeader>
           
-          {filteredLeads.length === 0 ? (
+          {leads.length === 0 ? (
             <tbody>
               <tr>
                 <td colSpan={6} className="p-0">
@@ -213,7 +165,7 @@ export function LeadsTable({ leads, onLeadClick }: LeadsTableProps) {
             </tbody>
           ) : (
             <tbody className="divide-y divide-slate-100/50">
-              {sortedLeads.map((lead) => (
+              {leads.map((lead) => (
                 <tr
                   key={lead.id}
                   className={`cursor-pointer transition-all duration-300 ease-[cubic-bezier(0.32,0.72,0,1)] group border-transparent ${isViewedNewLead(lead)

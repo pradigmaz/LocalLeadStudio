@@ -3,6 +3,8 @@ import { Sheet, SheetContent } from "@/components/ui/sheet"
 import { useCallback, useEffect, useState } from "react"
 import { toast } from "sonner"
 import { getApiErrorMessage, getErrorMessage, JSON_ACTION_HEADERS, LOCAL_ACTION_HEADERS, readJson } from "@/lib/api"
+import { dedupeSocialLinks } from "@/lib/social-platform"
+import { isBookingLink } from "@/lib/url"
 import type { Lead, LeadEvent, LeadStatus } from "@/types"
 import { LeadModalConfirmDialogs } from "./LeadModalConfirmDialogs"
 import { LeadModalHeader } from "./LeadModalHeader"
@@ -24,8 +26,6 @@ interface LeadModalProps {
   onPriorityChange: (leadId: string, priority: number) => void;
   onLeadDeleted: (leadId: string) => void;
 }
-
-const BOOKING_LINK_RE = /yclients|dikidi|prodoctorov|zoon|nethouse|taplink/i;
 
 const dedupeLinks = (links: string[]) => [...new Set(links.filter(Boolean))];
 
@@ -147,12 +147,12 @@ export function LeadModal({ lead, isOpen, onClose, onStatusChange, onPriorityCha
     }
   };
 
-  const websiteLinks = dedupeLinks(lead.websites || []).filter(link => !BOOKING_LINK_RE.test(link));
-  const socialLinks = dedupeLinks(lead.social_links || []).filter(link => !BOOKING_LINK_RE.test(link));
-  const bookingLinks = dedupeLinks([
+  const websiteLinks = dedupeLinks(lead.websites || []).filter(link => !isBookingLink(link));
+  const socialLinks = dedupeLinks(lead.social_links || []).filter(link => !isBookingLink(link));
+  const bookingLinks = dedupeSocialLinks([
     ...(lead.websites || []),
     ...(lead.social_links || []),
-  ].filter(link => BOOKING_LINK_RE.test(link)));
+  ].filter(link => isBookingLink(link)));
 
   return (
     <Sheet open={isOpen} onOpenChange={(open) => !open && onClose()}>

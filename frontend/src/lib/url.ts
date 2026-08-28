@@ -94,6 +94,10 @@ export const isYandexBusinessSite = (url: string) => hostFromUrl(url).endsWith("
 
 export const isTildaSite = (url: string) => hostFromUrl(url).endsWith(".tilda.ws");
 
+const BOOKING_LINK_RE = /yclients|dikidi|prodoctorov|zoon|nethouse/i;
+
+export const isBookingLink = (url: string) => BOOKING_LINK_RE.test(url);
+
 export const formatDisplayUrl = (url: string) => {
   try {
     const parsed = new URL(url.startsWith("http") ? url : `https://${url}`);

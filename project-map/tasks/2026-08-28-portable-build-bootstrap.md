@@ -7,7 +7,7 @@ last_updated: 2026-08-28
 
 ## Status
 
-Complete in source; no new portable artifact was generated.
+Complete; a fresh portable artifact was built for manual checking.
 
 ## Objective
 
@@ -32,6 +32,7 @@ Provide one Windows command that builds the current portable executable after ch
 - [x] Add `build-portable.bat` with local virtualenv, local Node modules, and project-local caches.
 - [x] Add a narrow policy test and replace the manual README recipe.
 - [x] Run static, Python, frontend, and Electron checks that do not overwrite a release artifact.
+- [x] Build the portable executable and verify the created artifact.
 
 ## Evidence
 
@@ -61,6 +62,7 @@ Provide one Windows command that builds the current portable executable after ch
 ## Progress Log
 
 - 2026-08-28: found that the repo has the final packaging command but not the requested full bootstrap; selected a one-file orchestration script.
+- 2026-08-28: the first build attempt exposed LF-only line endings in `build-portable.bat`, which `cmd.exe` parsed incorrectly. Added a failing-then-passing policy check and converted only the batch file to CRLF. The portable build then completed successfully: `electron/dist/Local Lead Studio 0.1.0.exe`, 85.09 MiB, SHA-256 `EF2EC1BBA961F451746EC7DDAFCDA1D9A6CAFD1FD0879678BEDF3F0634D5A6A5`.
 
 ## Files / Areas
 

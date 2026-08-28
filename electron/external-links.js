@@ -15,6 +15,10 @@ function isYandexBrowserOnlyUrl(url) {
   }
 }
 
+function shouldOpenInDedicatedBrowser(url, forceDedicatedBrowser = false, mode = 'default') {
+  return mode === 'dedicated' && (forceDedicatedBrowser || isYandexBrowserOnlyUrl(url));
+}
+
 function openHttpUrl(url, openExternal) {
   try {
     const { protocol } = new URL(url);
@@ -26,8 +30,8 @@ function openHttpUrl(url, openExternal) {
   }
 }
 
-function handleExternalWindow(url, openExternal) {
-  openHttpUrl(url, openExternal);
+function handleExternalWindow(url, openExternal, forceYandexBrowser = false) {
+  openHttpUrl(url, (httpUrl) => openExternal(httpUrl, forceYandexBrowser));
   return { action: 'deny' };
 }
 
@@ -41,4 +45,9 @@ function handleExternalNavigation(url, localOrigin, openExternal) {
   return true;
 }
 
-module.exports = { handleExternalNavigation, handleExternalWindow, isYandexBrowserOnlyUrl };
+module.exports = {
+  handleExternalNavigation,
+  handleExternalWindow,
+  isYandexBrowserOnlyUrl,
+  shouldOpenInDedicatedBrowser,
+};

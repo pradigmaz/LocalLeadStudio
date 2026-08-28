@@ -13,6 +13,12 @@ from lead_pipeline import build_providers, resolve_output_dir
 
 
 class PortablePolicyTests(unittest.TestCase):
+    def test_portable_builder_uses_windows_line_endings(self) -> None:
+        script_bytes = (PROJECT_ROOT / "build-portable.bat").read_bytes()
+
+        self.assertIn(b"\r\n", script_bytes)
+        self.assertNotIn(b"\n", script_bytes.replace(b"\r\n", b""))
+
     def test_portable_builder_keeps_dependencies_local_and_builds_in_order(self) -> None:
         script = (PROJECT_ROOT / "build-portable.bat").read_text(encoding="utf-8")
 

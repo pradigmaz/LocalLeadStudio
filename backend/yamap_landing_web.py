@@ -34,13 +34,13 @@ from cities import (
 from folders import find_lead_folder, open_folder_in_file_manager, delete_lead_folders
 from guards import require_no_active_run
 from lead_pipeline import JOB_MANAGER
-from yamap_landing_parser import repair_missing_website_data
+from startup_maintenance import repair_websites_once, sync_card_files_once
 
 import sys
 from pathlib import Path
 sys.path.append(str(Path(__file__).parent.resolve()))
 from lead_studio.lead_validation import validate_contact_status, validate_lead_status, validate_priority
-from lead_studio.card_files import sync_all_lead_card_statuses, sync_all_organization_card_websites, sync_lead_card_status
+from lead_studio.card_files import sync_lead_card_status
 
 
 class RunJobRequest(BaseModel):
@@ -85,10 +85,10 @@ class LeadUpdateRequest(BaseModel):
 @asynccontextmanager
 async def lifespan(_: FastAPI):
     repo = get_db_repo()
-    repair_missing_website_data(repo)
-    sync_all_organization_card_websites(repo)
-    sync_all_lead_card_statuses(repo)
+    repair_websites_once(repo)
+    maintenance = asyncio.create_task(asyncio.to_thread(sync_card_files_once, repo))
     yield
+    await maintenance
 
 
 app = FastAPI(title="Local Lead Studio API", lifespan=lifespan)
@@ -103,11 +103,33 @@ app.add_middleware(
 app.add_middleware(GZipMiddleware, minimum_size=1024)
 
 @app.get("/api/leads")
-def get_leads(request: FastAPIRequest):
+def get_leads(
+    request: FastAPIRequest,
+    offset: int = Query(0, ge=0),
+    limit: int = Query(50, ge=1, le=100),
+    search: str = Query("", max_length=200),
+    status: str = Query("ALL", max_length=20),
+    lead_type: str = Query("ALL", max_length=20),
+    city: str = Query("ALL", max_length=120),
+    review_range: str = Query("ALL", max_length=20),
+):
     require_local_request(request)
+    if status != "ALL":
+        validate_lead_status(status)
+    if lead_type not in {"ALL", "NEW_SITE", "REDESIGN"}:
+        raise HTTPException(status_code=400, detail="Invalid lead type")
+    if review_range not in {"ALL", "0-10", "10-50", "50-100", "100+"}:
+        raise HTTPException(status_code=400, detail="Invalid review range")
     repo = get_db_repo()
-    leads = repo.get_all_leads_view()
-    return {"leads": leads}
+    return repo.get_leads_page(
+        offset=offset,
+        limit=limit,
+        search=search,
+        status=status,
+        lead_type=lead_type,
+        city=city,
+        review_range=review_range,
+    )
 
 @app.get("/api/leads/{lead_id}/events")
 def get_lead_events(lead_id: str, request: FastAPIRequest):

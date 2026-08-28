@@ -45,7 +45,7 @@ class WebsiteRepairTests(unittest.TestCase):
         self.assertEqual(websites, [])
         self.assertEqual(socials, ["https://n123.yclients.com/", "https://vk.ru/freshautoru"])
 
-    def test_deduplicates_equivalent_messenger_links_without_merging_distinct_vk_pages(self):
+    def test_deduplicates_equivalent_messenger_and_dikidi_links_without_merging_distinct_pages(self):
         websites, socials = links_from_item(
             {
                 "socialLinks": [
@@ -56,6 +56,9 @@ class WebsiteRepairTests(unittest.TestCase):
                     {"href": "https://vk.ru/allauto_service"},
                     {"href": "https://vk.com/allauto_service"},
                     {"href": "https://vk.ru/club133296133"},
+                    {"href": "https://dikidi.ru/1936893"},
+                    {"href": "https://dikidi.net/1936893"},
+                    {"href": "https://dikidi.net/1936894"},
                 ],
             },
             {},
@@ -69,6 +72,8 @@ class WebsiteRepairTests(unittest.TestCase):
                 "https://wa.me/79805415504?text=hello",
                 "https://vk.ru/allauto_service",
                 "https://vk.ru/club133296133",
+                "https://dikidi.ru/1936893",
+                "https://dikidi.net/1936894",
             ],
         )
 

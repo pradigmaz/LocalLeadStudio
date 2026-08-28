@@ -4,17 +4,26 @@ import { Button } from '@/components/ui/button'
 import { Settings } from 'lucide-react'
 import { SettingsSidebar, type SettingsTabId } from './SettingsSidebar'
 import type { ProviderPreferences } from '@/types'
+import type { BrowserRoutingSettings } from '@/lib/browser-routing'
 
 const BlacklistTab = lazy(() => import('./tabs/BlacklistTab').then(module => ({ default: module.BlacklistTab })))
 const SourcesTab = lazy(() => import('./tabs/SourcesTab').then(module => ({ default: module.SourcesTab })))
+const BrowserTab = lazy(() => import('./tabs/BrowserTab').then(module => ({ default: module.BrowserTab })))
 const DatabaseTab = lazy(() => import('./tabs/DatabaseTab').then(module => ({ default: module.DatabaseTab })))
 
 interface SettingsDialogProps {
   preferences: ProviderPreferences | null
   onPreferencesChange: (preferences: ProviderPreferences) => void
+  browserRouting: BrowserRoutingSettings | null
+  onBrowserRoutingChange: (settings: BrowserRoutingSettings) => void
 }
 
-export function SettingsDialog({ preferences, onPreferencesChange }: SettingsDialogProps) {
+export function SettingsDialog({
+  preferences,
+  onPreferencesChange,
+  browserRouting,
+  onBrowserRoutingChange,
+}: SettingsDialogProps) {
   const [isOpen, setIsOpen] = useState(false)
   const [activeTab, setActiveTab] = useState<SettingsTabId>("blacklist")
 
@@ -48,6 +57,9 @@ export function SettingsDialog({ preferences, onPreferencesChange }: SettingsDia
                   preferences={preferences}
                   onPreferencesChange={onPreferencesChange}
                 />
+              )}
+              {activeTab === 'browser' && (
+                <BrowserTab settings={browserRouting} onSettingsChange={onBrowserRoutingChange} />
               )}
               {activeTab === 'database' && <DatabaseTab />}
             </Suspense>

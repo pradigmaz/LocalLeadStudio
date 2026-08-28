@@ -40,3 +40,17 @@ test("deduplicates equivalent messenger links and keeps distinct VK pages", () =
     ],
   )
 })
+
+test("deduplicates Dikidi mirrors and keeps distinct profiles", () => {
+  assert.deepEqual(
+    dedupeSocialLinks([
+      "https://dikidi.ru/1936893",
+      "https://dikidi.net/1936893",
+      "https://dikidi.net/1936894",
+    ]),
+    [
+      "https://dikidi.ru/1936893",
+      "https://dikidi.net/1936894",
+    ],
+  )
+})

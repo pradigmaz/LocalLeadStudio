@@ -15,7 +15,7 @@
   "build": {
     "appId": "tech.localleadstudio.desktop",
     "productName": "Local Lead Studio",
-    "files": ["main.js", "wait-port.js", "external-links.js"],
+    "files": ["main.js", "preload.js", "wait-port.js", "external-links.js", "browser-routing.js", "startup.html"],
     "extraResources": [
       { "from": "../backend/dist/lls-backend", "to": "lls-backend" }
     ],

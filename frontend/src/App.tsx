@@ -1,52 +1,48 @@
-import { useCallback, useEffect, useState } from "react"
+import { useEffect, useState } from "react"
 import { SearchForm } from '@/components/search/SearchForm'
 import { ParsingStatus } from '@/components/search/ParsingStatus'
 import { LeadsTable } from '@/components/leads/LeadsTable'
 import { LeadModal } from '@/components/leads/LeadModal'
 import { SettingsDialog } from '@/components/settings/SettingsDialog'
+import { BrowserRoutingDialog } from '@/components/settings/BrowserRoutingDialog'
 import { Badge } from "@/components/ui/badge"
+import { Button } from "@/components/ui/button"
 import { Toaster } from "@/components/ui/sonner"
 import type { Lead, LeadStatus, ProviderPreferences, RunConfig, RunJobStatus } from '@/types'
 import { NumberTicker } from "@/components/ui/number-ticker"
 import { getErrorMessage, JSON_ACTION_HEADERS, LOCAL_ACTION_HEADERS, readJson } from "@/lib/api"
-
-interface LeadsResponse {
-  leads?: Lead[];
-  error?: string;
-}
+import { LEAD_STATUS_SUMMARY } from "@/lib/lead-status"
+import { getBrowserRoutingApi, type BrowserRoutingSettings } from "@/lib/browser-routing"
+import { useLeadPages } from "@/hooks/use-lead-pages"
+import { PanelLeftClose, PanelLeftOpen } from "lucide-react"
 
 const EMPTY_JOB_STATUS: RunJobStatus = { status: 'IDLE' };
 const TERMINAL_JOB_STATUSES = new Set(['FINISHED', 'FAILED', 'CANCELLED', 'RATE_LIMITED']);
 function App() {
   const [viewState, setViewState] = useState<'IDLE' | 'LOADING' | 'RESULTS'>('IDLE');
-  const [leads, setLeads] = useState<Lead[]>([]);
   const [selectedLead, setSelectedLead] = useState<Lead | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [jobStatus, setJobStatus] = useState<RunJobStatus>(EMPTY_JOB_STATUS);
   const [preferences, setPreferences] = useState<ProviderPreferences | null>(null);
-
-  const loadLeads = useCallback(async () => {
-    const leadsResponse = await fetch('/api/leads');
-    const leadsData = await readJson<LeadsResponse>(leadsResponse);
-    const nextLeads = leadsData.leads || [];
-    setLeads(nextLeads);
-    return nextLeads;
-  }, []);
-
-  useEffect(() => {
-    const loadInitialLeads = async () => {
-      try {
-        const nextLeads = await loadLeads();
-        if (nextLeads.length > 0) {
-          setViewState('RESULTS');
-        }
-      } catch (err) {
-        console.error("Failed to fetch initial leads:", err);
-      }
-    };
-
-    void loadInitialLeads();
-  }, [loadLeads]);
+  const [browserRouting, setBrowserRouting] = useState<BrowserRoutingSettings | null>(null);
+  const [isBrowserOnboardingOpen, setIsBrowserOnboardingOpen] = useState(false);
+  const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false);
+  const {
+    cities,
+    filteredLeadTotal,
+    isLoadingMore,
+    leadFilters,
+    leadStatusCounts,
+    leads,
+    loadMoreLeads,
+    reloadLeads,
+    setFilteredLeadTotal,
+    setLeadStatusCounts,
+    setLeads,
+    setTotalLeads,
+    totalLeads,
+    updateLeadFilters,
+  } = useLeadPages((message) => setError(message));
 
   useEffect(() => {
     fetch('/api/settings/preferences')
@@ -55,6 +51,17 @@ function App() {
         setPreferences(nextPreferences);
       })
       .catch(err => console.error("Failed to fetch preferences:", err));
+  }, []);
+
+  useEffect(() => {
+    const api = getBrowserRoutingApi();
+    if (!api) return;
+    api.getSettings()
+      .then((nextRouting) => {
+        setBrowserRouting(nextRouting);
+        setIsBrowserOnboardingOpen(nextRouting.onboarding === 'pending');
+      })
+      .catch(err => console.error("Failed to load browser routing settings:", err));
   }, []);
 
   useEffect(() => {
@@ -71,7 +78,7 @@ function App() {
         setJobStatus(nextJob);
 
         if (TERMINAL_JOB_STATUSES.has(nextJob.status)) {
-          const nextLeads = await loadLeads();
+          const nextPage = await reloadLeads();
           if (isCancelled) return;
 
           if (nextJob.status === 'FAILED') {
@@ -80,7 +87,7 @@ function App() {
             setError(nextJob.result?.error || 'Сбор остановлен: лимит Яндекс Карт');
           }
 
-          setViewState(nextLeads.length > 0 ? 'RESULTS' : 'IDLE');
+          setViewState(nextPage.totalLeads > 0 ? 'RESULTS' : 'IDLE');
         }
       } catch (err: unknown) {
         if (isCancelled) return;
@@ -96,7 +103,7 @@ function App() {
       isCancelled = true;
       window.clearInterval(timer);
     };
-  }, [loadLeads, viewState]);
+  }, [reloadLeads, viewState]);
 
   const handleRun = async (config: RunConfig) => {
     try {
@@ -129,8 +136,18 @@ function App() {
     // Оптимистичное обновление UI (для мгновенной реакции и анимации)
     const previousLeads = [...leads];
     const previousSelectedLead = selectedLead;
+    const previousLead = leads.find(lead => lead.id === leadId);
+    const previousStatusCounts = leadStatusCounts;
 
     setLeads(current => current.map(l => l.id === leadId ? { ...l, lead_status: newStatus } : l));
+    setLeadStatusCounts(current => {
+      if (!previousLead || previousLead.lead_status === newStatus) return current;
+      return {
+        ...current,
+        [previousLead.lead_status]: Math.max(0, current[previousLead.lead_status] - 1),
+        [newStatus]: current[newStatus] + 1,
+      };
+    });
     if (selectedLead && selectedLead.id === leadId) {
       setSelectedLead({ ...selectedLead, lead_status: newStatus });
     }
@@ -144,12 +161,20 @@ function App() {
       
       const result = await readJson<{ success: boolean }>(response);
       if (!result.success) throw new Error("Сервер не подтвердил обновление статуса.");
-      if (newStatus === 'REJECT') {
+      if (newStatus === 'REJECT' || newStatus === 'POTENTIAL') {
         setSelectedLead(current => current?.id === leadId ? null : current);
       }
     } catch (err) {
       setLeads(previousLeads);
       setSelectedLead(previousSelectedLead);
+      setLeadStatusCounts(previousStatusCounts);
+      setError(getErrorMessage(err));
+      return;
+    }
+
+    try {
+      await reloadLeads();
+    } catch (err) {
       setError(getErrorMessage(err));
     }
   };
@@ -201,18 +226,45 @@ function App() {
       setLeads(previousLeads);
       setSelectedLead(previousSelectedLead);
       setError(getErrorMessage(err));
+      return;
+    }
+
+    try {
+      await reloadLeads();
+    } catch (err) {
+      setError(getErrorMessage(err));
     }
   };
 
   const handleLeadDeleted = (leadId: string) => {
-    setLeads(leads.filter(l => l.id !== leadId));
+    const deletedLead = leads.find(lead => lead.id === leadId);
+    setLeads(current => current.filter(lead => lead.id !== leadId));
+    setSelectedLead(current => current?.id === leadId ? null : current);
+    setFilteredLeadTotal(current => Math.max(0, current - 1));
+    setTotalLeads(current => Math.max(0, current - 1));
+    if (deletedLead) {
+      setLeadStatusCounts(current => ({
+        ...current,
+        [deletedLead.lead_status]: Math.max(0, current[deletedLead.lead_status] - 1),
+      }));
+    }
+    void reloadLeads().catch((err) => setError(getErrorMessage(err)));
   };
 
   return (
     <div className="flex h-screen bg-slate-100 overflow-hidden text-slate-900 font-sans">
       <Toaster position="bottom-right" richColors />
+      <BrowserRoutingDialog
+        open={isBrowserOnboardingOpen}
+        onOpenChange={setIsBrowserOnboardingOpen}
+        onboarding
+        onSettingsChange={(nextRouting) => {
+          setBrowserRouting(nextRouting)
+          setIsBrowserOnboardingOpen(false)
+        }}
+      />
       {/* Sidebar */}
-      <div className="w-[26rem] shrink-0 border-r bg-white flex flex-col z-10 shadow-sm">
+      <div className={`shrink-0 overflow-hidden bg-white flex flex-col z-10 shadow-sm transition-[width] duration-200 ease-out ${isSidebarCollapsed ? "w-0 border-r-0" : "w-[26rem] border-r"}`}>
         <div className="h-14 flex items-center px-6 border-b shrink-0">
           <div className="flex items-center gap-2 font-bold text-lg tracking-tight">
             <div className="w-6 h-6 bg-primary rounded-md flex items-center justify-center text-primary-foreground text-xs">
@@ -230,19 +282,47 @@ function App() {
       <div className="flex-1 flex flex-col h-full overflow-hidden relative">
         {/* Header */}
         <header className="min-h-14 border-b bg-white flex items-center px-8 justify-between shrink-0 shadow-sm z-10 py-2 gap-4">
-          <h1 className="font-semibold text-lg flex items-center gap-3 shrink-0">
-            Единая база
-            {leads.length > 0 && (
-              <Badge variant="secondary" className="font-mono text-xs font-semibold">
-                <NumberTicker value={leads.length} />
-              </Badge>
-            )}
-          </h1>
+          <div className="flex min-w-0 items-center gap-3">
+            <Button
+              variant="ghost"
+              size="icon-sm"
+              type="button"
+              onClick={() => setIsSidebarCollapsed(current => !current)}
+              aria-label={isSidebarCollapsed ? "Показать конструктор сбора" : "Скрыть конструктор сбора"}
+              title={isSidebarCollapsed ? "Показать конструктор сбора" : "Скрыть конструктор сбора"}
+            >
+              {isSidebarCollapsed ? <PanelLeftOpen /> : <PanelLeftClose />}
+            </Button>
+            <div className="min-w-0">
+              <div className="flex items-center gap-3">
+                <h1 className="font-semibold text-lg shrink-0">Единая база</h1>
+                {totalLeads > 0 && (
+                  <Badge variant="secondary" className="font-mono text-xs font-semibold">
+                    <NumberTicker value={totalLeads} />
+                  </Badge>
+                )}
+              </div>
+              {totalLeads > 0 && (
+                <div className="mt-1 flex flex-wrap gap-x-3 gap-y-1 text-xs text-muted-foreground">
+                  {LEAD_STATUS_SUMMARY.map(({ status, label }) => (
+                    <span key={status} className="whitespace-nowrap">
+                      {label}: <span className="font-medium tabular-nums text-foreground">{leadStatusCounts[status]}</span>
+                    </span>
+                  ))}
+                </div>
+              )}
+            </div>
+          </div>
           <div className="flex items-center gap-4 text-sm text-muted-foreground">
             {viewState === 'LOADING' && (
               <ParsingStatus job={jobStatus} onCancel={handleCancelRun} />
             )}
-            <SettingsDialog preferences={preferences} onPreferencesChange={setPreferences} />
+            <SettingsDialog
+              preferences={preferences}
+              onPreferencesChange={setPreferences}
+              browserRouting={browserRouting}
+              onBrowserRoutingChange={setBrowserRouting}
+            />
           </div>
         </header>
 
@@ -256,7 +336,7 @@ function App() {
               </div>
             )}
 
-            {viewState === 'IDLE' && leads.length === 0 && (
+            {viewState === 'IDLE' && totalLeads === 0 && (
               <div className="h-[60vh] flex items-center justify-center">
                 <div className="text-center space-y-4">
                   <div className="w-16 h-16 bg-slate-200 rounded-full flex items-center justify-center mx-auto mb-6 text-slate-400">
@@ -270,8 +350,25 @@ function App() {
               </div>
             )}
 
-            {(viewState === 'RESULTS' || leads.length > 0) && (
-              <LeadsTable leads={leads} onLeadClick={handleLeadClick} />
+            {(viewState === 'RESULTS' || totalLeads > 0) && (
+              <>
+                <LeadsTable
+                  leads={leads}
+                  onLeadClick={handleLeadClick}
+                  filters={leadFilters}
+                  cities={cities}
+                  hasAnyLeads={totalLeads > 0}
+                  onFiltersChange={updateLeadFilters}
+                />
+                {filteredLeadTotal > leads.length && (
+                  <div className="flex flex-wrap items-center justify-between gap-3 px-4 py-5 text-sm text-muted-foreground">
+                    <span>Показано {leads.length} из {filteredLeadTotal}</span>
+                    <Button type="button" variant="outline" onClick={loadMoreLeads} disabled={isLoadingMore}>
+                      {isLoadingMore ? 'Загружаю…' : 'Показать ещё'}
+                    </Button>
+                  </div>
+                )}
+              </>
             )}
           </div>
         </div>

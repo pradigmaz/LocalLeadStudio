@@ -110,6 +110,7 @@ export interface RunResult {
     created_count?: number;
     enriched_count?: number;
     existing_count?: number;
+    skip_reasons?: Record<string, number>;
   };
   yandex_guard?: {
     date: string;
@@ -148,6 +149,7 @@ export interface RunJobStatus {
   created_count?: number;
   enriched_count?: number;
   existing_count?: number;
+  skip_reasons?: Record<string, number>;
   blocked_source?: ProviderSource | string;
   result?: RunResult | null;
   error?: string | null;

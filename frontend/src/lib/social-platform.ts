@@ -61,6 +61,10 @@ function socialLinkKey(url: string): string {
       if (phone) return `whatsapp:${phone}`
     }
     if (platform === "vk") return `vk:${path.toLowerCase()}`
+    const host = parsed.hostname.toLowerCase()
+    if (path && (host === "dikidi.ru" || host.endsWith(".dikidi.ru") || host === "dikidi.net" || host.endsWith(".dikidi.net"))) {
+      return `dikidi:${path.toLowerCase()}`
+    }
   } catch {
     // Keep malformed links distinct rather than hiding a potentially useful contact.
   }

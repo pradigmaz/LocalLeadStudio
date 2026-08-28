@@ -6,17 +6,56 @@ const os = require('os');
 const path = require('path');
 const packageJson = require('./package.json');
 const { waitForPort, portStartupError } = require('./wait-port');
-const { handleExternalNavigation, handleExternalWindow, isYandexBrowserOnlyUrl } = require('./external-links');
+const {
+  handleExternalNavigation,
+  handleExternalWindow,
+  isYandexBrowserOnlyUrl,
+  shouldOpenInDedicatedBrowser,
+} = require('./external-links');
 const { compareDirectoryHashes, findBundledFrontend } = require('./release-preflight');
+
+let browserRouting = {};
+try {
+  browserRouting = require('./browser-routing');
+} catch (error) {
+  browserRouting.loadError = error.message;
+}
 
 (async () => {
   assert.strictEqual(packageJson.scripts.dist, 'node release-preflight.js && electron-builder --win portable');
   const mainSource = fs.readFileSync(path.join(__dirname, 'main.js'), 'utf8');
+  const leadModalInfoGridSource = fs.readFileSync(
+    path.join(__dirname, '..', 'frontend', 'src', 'components', 'leads', 'LeadModalInfoGrid.tsx'),
+    'utf8',
+  );
   assert.match(mainSource, /\bminWidth:\s*1120\b/, 'desktop window must keep the collection settings readable');
+  assert.match(mainSource, /data:text\/html;charset=utf-8,/, 'backend error page must declare UTF-8 for Russian text');
+  assert.match(mainSource, /readBrowserRouting\(/, 'external links must read the saved browser choice');
+  assert.match(mainSource, /showUnavailableBrowserDialog\(/, 'a missing selected browser must prompt instead of falling back');
+  assert.match(mainSource, /validateLocalSender\(/, 'browser settings IPC must validate the local renderer origin');
+  assert(packageJson.build.files.includes('preload.js'), 'the packaged app must include the narrow browser-settings preload bridge');
+  assert(packageJson.build.files.includes('startup.html'), 'the packaged app must include the startup screen');
+  assert(fs.existsSync(path.join(__dirname, 'startup.html')), 'the startup screen must exist locally');
+  assert.match(mainSource, /show:\s*false/, 'the native window must stay hidden until the startup screen is painted');
+  assert.match(mainSource, /win\.once\('ready-to-show', \(\) => win\.show\(\)\)/, 'the startup screen must show only after first paint');
+  assert(
+    mainSource.indexOf("await win.loadFile(path.join(__dirname, 'startup.html'));" ) < mainSource.indexOf('await waitForPort(PORT)'),
+    'the startup screen must load before waiting for the backend port',
+  );
   assert.match(
     mainSource,
-    /if \(isYandexBrowserOnlyUrl\(url\)\) \{\s+openYandexBrowser\(url\);\s+return;\s+\}/,
-    'VK, MAX and Yandex Maps must never fall back to the default browser',
+    /frameName === 'lead-studio-site'/,
+    'sites from a lead card must be routed to Yandex Browser',
+  );
+  assert.match(
+    leadModalInfoGridSource,
+    /href=\{w\}\s+target="lead-studio-site"/,
+    'lead card site links must carry the Yandex Browser routing marker',
+  );
+  assert.match(
+    leadModalInfoGridSource,
+    /bookingLinks\.map\(\(s, i\) => \(\s*<a\s+key=\{i\}\s+href=\{s\}\s+target="lead-studio-site"/,
+    'lead card booking links must carry the Yandex Browser routing marker',
   );
   assert.strictEqual(
     portStartupError?.(8765, true),
@@ -69,6 +108,7 @@ const { compareDirectoryHashes, findBundledFrontend } = require('./release-prefl
   assert.deepStrictEqual(openedUrls, ['https://yandex.ru/maps']);
 
   handleExternalWindow('file:///C:/Windows/System32', (url) => openedUrls.push(url));
+  handleExternalWindow('file:///C:/Windows/System32', (url) => openedUrls.push(url), true);
   await new Promise(setImmediate);
   assert.deepStrictEqual(openedUrls, ['https://yandex.ru/maps']);
 
@@ -78,16 +118,72 @@ const { compareDirectoryHashes, findBundledFrontend } = require('./release-prefl
   assert.strictEqual(isYandexBrowserOnlyUrl('https://yandex.ru/search'), false);
   assert.strictEqual(isYandexBrowserOnlyUrl('https://example.com'), false);
 
+  assert.strictEqual(
+    typeof shouldOpenInDedicatedBrowser,
+    'function',
+    'special links must respect the saved separate-browser mode',
+  );
+  assert.strictEqual(shouldOpenInDedicatedBrowser('https://vk.ru/example', false, 'default'), false);
+  assert.strictEqual(shouldOpenInDedicatedBrowser('https://vk.ru/example', false, 'dedicated'), true);
+  assert.strictEqual(shouldOpenInDedicatedBrowser('https://example.com', false, 'dedicated'), false);
+  assert.strictEqual(shouldOpenInDedicatedBrowser('https://example.com', true, 'dedicated'), true);
+
+  assert.strictEqual(
+    typeof browserRouting.readBrowserRouting,
+    'function',
+    `browser routing settings must be persisted locally${browserRouting.loadError ? `: ${browserRouting.loadError}` : ''}`,
+  );
+  assert.strictEqual(typeof browserRouting.saveBrowserRouting, 'function');
+  assert.strictEqual(typeof browserRouting.discoverBrowsers, 'function');
+  assert.strictEqual(typeof browserRouting.isBrowserExecutable, 'function');
+
+  const browserFixture = fs.mkdtempSync(path.join(os.tmpdir(), 'lls-browser-routing-'));
+  try {
+    const browserRoot = path.join(browserFixture, 'LocalAppData');
+    const yandexPath = path.join(browserRoot, 'Yandex', 'YandexBrowser', 'Application', 'browser.exe');
+    fs.mkdirSync(path.dirname(yandexPath), { recursive: true });
+    fs.writeFileSync(yandexPath, 'browser');
+
+    assert.deepStrictEqual(browserRouting.readBrowserRouting(browserFixture), {
+      onboarding: 'pending',
+      mode: 'default',
+      browserPath: '',
+      browserLabel: '',
+    });
+    assert.strictEqual(browserRouting.isBrowserExecutable(yandexPath), true);
+    assert.strictEqual(browserRouting.isBrowserExecutable(path.join(browserFixture, 'browser.cmd')), false);
+
+    const savedRouting = browserRouting.saveBrowserRouting(browserFixture, {
+      onboarding: 'complete',
+      mode: 'dedicated',
+      browserPath: yandexPath,
+      browserLabel: 'Yandex Browser',
+    });
+    assert.deepStrictEqual(browserRouting.readBrowserRouting(browserFixture), savedRouting);
+    assert.deepStrictEqual(
+      browserRouting.discoverBrowsers({
+        LOCALAPPDATA: browserRoot,
+        ProgramFiles: '',
+        'ProgramFiles(x86)': '',
+        APPDATA: '',
+      }),
+      [{ id: 'yandex', label: 'Yandex Browser', path: yandexPath, recommended: true }],
+    );
+  } finally {
+    fs.rmSync(browserFixture, { recursive: true, force: true });
+  }
+
   const yandexBrowserUrls = [];
   const defaultBrowserUrls = [];
-  const openByBrowserPolicy = (url) => {
-    (isYandexBrowserOnlyUrl(url) ? yandexBrowserUrls : defaultBrowserUrls).push(url);
+  const openByBrowserPolicy = (url, forceYandexBrowser) => {
+    (forceYandexBrowser || isYandexBrowserOnlyUrl(url) ? yandexBrowserUrls : defaultBrowserUrls).push(url);
   };
   handleExternalWindow('https://vk.com/example', openByBrowserPolicy);
   handleExternalNavigation('https://max.ru/example', 'http://127.0.0.1:8765', openByBrowserPolicy);
   handleExternalWindow('https://example.com', openByBrowserPolicy);
+  handleExternalWindow('https://example.com/site', openByBrowserPolicy, true);
   await new Promise(setImmediate);
-  assert.deepStrictEqual(yandexBrowserUrls, ['https://vk.com/example', 'https://max.ru/example']);
+  assert.deepStrictEqual(yandexBrowserUrls, ['https://vk.com/example', 'https://max.ru/example', 'https://example.com/site']);
   assert.deepStrictEqual(defaultBrowserUrls, ['https://example.com']);
 
   // Навигация наружу не заменяет локальный интерфейс внутри Electron.
